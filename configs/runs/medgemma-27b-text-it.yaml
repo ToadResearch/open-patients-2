@@ -31,8 +31,8 @@ vllm:
 
 sampling:
   temperature: 0.0
-  top_p: 1.0
-  max_new_tokens: 700
+  top_p: 0.95
+  max_new_tokens: 8192
   seed: 0
   structured_output: true
 
