@@ -57,7 +57,7 @@ uv run open-patients-push \
 ```
 
 **Hugging Face token:** Required for pushing. You can either:
-- run `huggingface-cli login` once (uses a cached token), or
+- run `uv run hf auth login` once (uses a cached token), or
 - pass `--token YOUR_TOKEN`, or
 - set `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` in your environment.
 

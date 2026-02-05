@@ -4,6 +4,8 @@ set -euo pipefail
 echo "[setup] Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
+source ~/.bashrc
+
 # Ensure uv is on PATH for this shell session.
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
@@ -15,6 +17,10 @@ fi
 
 echo "[setup] Syncing dependencies (including vllm extra)..."
 uv sync --extra vllm
+
+echo "[setup] Installing system build dependencies..."
+sudo apt-get update
+sudo apt-get install -y build-essential python3.12-dev
 
 echo "[setup] GPU check..."
 nvidia-smi

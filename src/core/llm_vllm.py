@@ -54,6 +54,18 @@ def build_llm(model: str, vllm_cfg: Dict[str, Any]) -> Tuple["LLM", Any]:
     return llm, tokenizer
 
 
+def _build_structured_params(cls: Any, inner_schema: Dict[str, Any]) -> Any:
+    """Instantiate structured output params across vLLM versions."""
+    sig = inspect.signature(cls.__init__)
+    if "json" in sig.parameters:
+        return cls(json=inner_schema)
+    if "json_schema" in sig.parameters:
+        return cls(json_schema=inner_schema)
+    if "schema" in sig.parameters:
+        return cls(schema=inner_schema)
+    return cls(inner_schema)
+
+
 def build_sampling(
     sampling_cfg: Dict[str, Any],
     structured_output: bool,
@@ -62,21 +74,51 @@ def build_sampling(
     """Construct SamplingParams with optional structured output constraints."""
     vllm = _require_vllm()
     SamplingParams = vllm.SamplingParams
-    try:
-        from vllm.sampling_params import StructuredOutputsParams  # type: ignore
-    except Exception:  # pragma: no cover
-        StructuredOutputsParams = None  # type: ignore
 
-    structured_outputs = None
-    if structured_output and json_schema is not None and StructuredOutputsParams is not None:
-        inner = json_schema["json_schema"]["schema"]
-        structured_outputs = StructuredOutputsParams(json=inner)
+    StructuredOutputsParams = None
+    GuidedDecodingParams = None
+    try:
+        from vllm import sampling_params as vllm_sampling_params  # type: ignore
+
+        StructuredOutputsParams = getattr(vllm_sampling_params, "StructuredOutputsParams", None)
+        GuidedDecodingParams = getattr(vllm_sampling_params, "GuidedDecodingParams", None)
+    except Exception:  # pragma: no cover
+        StructuredOutputsParams = None
+        GuidedDecodingParams = None
+
+    if StructuredOutputsParams is None:
+        StructuredOutputsParams = getattr(vllm, "StructuredOutputsParams", None)
+    if GuidedDecodingParams is None:
+        GuidedDecodingParams = getattr(vllm, "GuidedDecodingParams", None)
 
     sampling_kwargs = dict(
         temperature=sampling_cfg.get("temperature"),
         top_p=sampling_cfg.get("top_p"),
         max_tokens=sampling_cfg.get("max_new_tokens"),
         seed=sampling_cfg.get("seed"),
-        structured_outputs=structured_outputs,
     )
+
+    if structured_output and json_schema is not None:
+        inner = json_schema["json_schema"]["schema"]
+        sig = inspect.signature(SamplingParams.__init__)
+        if "structured_outputs" in sig.parameters and StructuredOutputsParams is not None:
+            sampling_kwargs["structured_outputs"] = _build_structured_params(
+                StructuredOutputsParams, inner
+            )
+        elif "guided_decoding" in sig.parameters and GuidedDecodingParams is not None:
+            sampling_kwargs["guided_decoding"] = _build_structured_params(
+                GuidedDecodingParams, inner
+            )
+        elif "guided_decoding_params" in sig.parameters and GuidedDecodingParams is not None:
+            sampling_kwargs["guided_decoding_params"] = _build_structured_params(
+                GuidedDecodingParams, inner
+            )
+        elif "json_schema" in sig.parameters:
+            sampling_kwargs["json_schema"] = inner
+        else:
+            print(
+                "[warn] structured_output requested but unsupported by this vLLM version; "
+                "falling back to unconstrained generation."
+            )
+
     return SamplingParams(**_filter_kwargs(SamplingParams.__init__, sampling_kwargs))  # type: ignore[arg-type]
