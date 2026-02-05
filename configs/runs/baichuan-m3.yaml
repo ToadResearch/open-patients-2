@@ -1,0 +1,66 @@
+# configs/baichuan-m3.yaml
+# Target model: baichuan-inc/Baichuan-M3-235B-GPTQ-INT4
+# NOTE: model card recommends vllm>=0.11.0 for INT4 deployment. :contentReference[oaicite:1]{index=1}
+
+run:
+  dataset: ncbi/Open-Patients
+  split: train
+  out_dir: ./open_patients_enriched_baichuan_m3
+  processed_ids: processed_ids.txt
+  schema: configs/schemas/schema.json
+  usmle_mapping: configs/usmle_mapping.json
+
+  batch_size: 32
+  shard_size: 50000
+  max_notes: 0
+  max_input_chars: 8000
+
+  resume: true
+
+  # Optional CPU-side sharding across processes (your existing --num_shards/--shard_idx)
+  num_shards: 1
+  shard_idx: 0
+
+model:
+  name: baichuan-inc/Baichuan-M3-235B-GPTQ-INT4
+  trust_remote_code: true
+
+prompt:
+  # Baichuan-M3 examples use thinking_mode='on' in the tokenizer template. :contentReference[oaicite:2]{index=2}
+  # For *structured JSON extraction*, you generally want to disable thinking.
+  style: compact
+  chat_template_kwargs:
+    thinking_mode: "off"
+
+sampling:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 700
+  seed: 0
+  structured_output: true
+
+vllm:
+  # Total GPUs used = tensor_parallel_size * pipeline_parallel_size * data_parallel_size
+  # For an 8-GPU box, a good starting point is TP=4, DP=2 (2 replicas).
+  tensor_parallel_size: 4
+  pipeline_parallel_size: 1
+  data_parallel_size: 2
+
+  enable_expert_parallel: true
+
+  max_model_len: 8192
+  gpu_memory_utilization: 0.92
+  max_parallel_loading_workers: 2
+
+  # GPTQ is usually auto-detected from the checkpoint; leave null unless you hit issues.
+  quantization: null
+
+  # Throughput knobs
+  enable_chunked_prefill: true
+  max_num_batched_tokens: 8192
+  max_num_seqs: 128
+  enable_prefix_caching: true
+
+  # KV cache
+  kv_cache_dtype: fp8
+  calculate_kv_scales: false

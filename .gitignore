@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Packaging
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Outputs
+outputs/
+benchmarks/
+open_patients_enriched/
+open_patients_enriched*/
+open_patients_enriched/**/*.jsonl
+*.jsonl
+*.parquet
+*.arrow
+
+# Caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Other
+extra/
+.DS_Store

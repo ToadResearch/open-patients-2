@@ -1,0 +1,44 @@
+run:
+  dataset: ncbi/Open-Patients
+  split: train
+  out_dir: ./open_patients_enriched_medgemma27b
+  resume: true
+  max_notes: 0
+  max_input_chars: 12000
+  shard_size: 50000
+  schema: configs/schemas/schema.json
+  usmle_mapping: configs/usmle_mapping.json
+
+model:
+  name: google/medgemma-27b-text-it
+  prompt_mode: chat
+
+vllm:
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 1
+  enable_expert_parallel: false
+  dtype: auto
+  max_model_len: 8192
+  gpu_memory_utilization: 0.92
+  enable_chunked_prefill: true
+  enable_prefix_caching: true
+  kv_cache_dtype: fp8
+  calculate_kv_scales: false
+  quantization: null
+  max_num_batched_tokens: 8192
+  max_num_seqs: 128
+  max_parallel_loading_workers: 2
+
+sampling:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 700
+  seed: 0
+  structured_output: true
+
+prompt:
+  style: compact
+  disable_thinking: false
+
+parallel:
+  replicas: 8

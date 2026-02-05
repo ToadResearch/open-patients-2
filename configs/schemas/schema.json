@@ -1,0 +1,1059 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "clinical_note_structured_extraction",
+    "strict": true,
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+
+
+        "conditions": {
+          "type": "array",
+          "description": "Diagnoses/diseases/medical problems (including PMH/comorbidities and problem-list items); do not include symptoms/signs or objective test results—use symptoms_signs for symptoms/signs and observations for labs/imaging/pathology/vitals/results.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+
+              "name": {
+                "type": "string",
+                "description": "Name of the condition/diagnosis",
+                "examples": ["invasive mammary carcinoma"]
+              },
+
+              "status": {
+                "type": "string",
+                "description": "Assertion axis: is the condition stated as present, negated, uncertain, or historical? For 'history of X', prefer status=present + temporality=past; historical is allowed but less precise.",
+                "enum": ["present", "negated", "uncertain", "historical"]
+              },
+              
+              "body_site": {
+                "type": ["string", "null"],
+                "description": "Anatomical location",
+                "examples": ["breast"]
+              },
+
+              "laterality": {
+                "type": ["string", "null"],
+                "description": "Side of body",
+                "enum": ["right", "left", "bilateral", "unknown", null]
+              },
+
+              "certainty": {
+                "type": ["string", "null"],
+                "description": "Level of diagnostic certainty",
+                "enum": ["suspected", "confirmed", "ruled_out", "unknown", null]
+              },
+
+              "evidence": {
+                "type": ["string", "null"],
+                "description": "Short quote or sentence fragment supporting the extraction",
+                "examples": ["biopsy confirmed invasive ductal carcinoma"]
+              },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["name", "status"]
+          },
+          "default": []
+        },
+
+
+        "symptoms_signs": {
+          "type": "array",
+          "description": "Patient-reported symptoms and clinician-observed signs/exam findings (HPI/ROS/PE); do not include lab/imaging/pathology results—those belong in observations.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+
+              "name": {
+                "type": "string",
+                "description": "Name of the symptom or sign",
+                "examples": ["chest pain"]
+              },
+
+              "status": {
+                "type": "string",
+                "description": "Assertion axis: is the symptom/sign stated as present, negated, uncertain, or historical? For 'history of X', prefer status=present + temporality=past; historical is allowed but less precise.",
+                "enum": ["present", "negated", "uncertain", "historical"]
+              },
+
+              "body_site": {
+                "type": ["string", "null"],
+                "description": "Anatomical location",
+                "examples": ["chest"]
+              },
+
+              "laterality": {
+                "type": ["string", "null"],
+                "description": "Side of body",
+                "enum": ["right", "left", "bilateral", "unknown", null]
+              },
+
+              "certainty": {
+                "type": ["string", "null"],
+                "description": "Level of certainty",
+                "enum": ["suspected", "confirmed", "ruled_out", "unknown", null]
+              },
+
+              "evidence": {
+                "type": ["string", "null"],
+                "description": "Short quote or sentence fragment supporting the extraction",
+                "examples": ["patient denies chest pain"]
+              },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["name", "status"]
+          },
+          "default": []
+        },
+
+
+        "medications": {
+          "type": "array",
+          "description": "Individual medication mentions (current/prescribed/historical/discontinued) with dosing details; do not use for non-drug therapies—use treatments for regimen-level courses.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+
+              "name": {
+                "type": "string",
+                "description": "Name of the medication",
+                "examples": ["metformin"]
+              },
+
+              "status": {
+                "type": "string",
+                "description": "Medication state: current (active), discontinued (stopped), historical (past use), prescribed (newly ordered). Map to temporality: current→current, discontinued→resolved, historical→past, prescribed→planned or current.",
+                "enum": ["current", "discontinued", "historical", "prescribed"]
+              },
+
+              "dose": {
+                "type": ["string", "null"],
+                "description": "Dosage amount",
+                "examples": ["500"]
+              },
+
+              "unit": {
+                "type": ["string", "null"],
+                "description": "Dosage unit",
+                "examples": ["mg"]
+              },
+              "route": {
+                "type": ["string", "null"],
+                "description": "Route of administration",
+                "examples": ["oral"]
+              },
+
+              "frequency": {
+                "type": ["string", "null"],
+                "description": "Dosing frequency",
+                "examples": ["twice daily"]
+              },
+
+              "evidence": {
+                "type": ["string", "null"],
+                "description": "Short quote or sentence fragment supporting the extraction"
+              },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["name", "status"]
+          },
+          "default": []
+        },
+
+
+        "procedures": {
+          "type": "array",
+          "description": "Discrete clinical actions/events (tests ordered/performed, biopsies, surgeries, interventions); use treatments for multi-session therapeutic courses/regimens (e.g., radiation fractions, chemo cycles).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+
+              "name": {
+                "type": "string",
+                "description": "Name of the procedure",
+                "examples": ["right simple mastectomy"]
+              },
+
+              "status": {
+                "type": "string",
+                "description": "Event state: was the procedure performed, planned, cancelled, or recommended? Map to temporality: performed→past or current (depending on context), planned/recommended→planned. Use time.when for 'postoperative day 2' etc.",
+                "enum": ["performed", "planned", "cancelled", "recommended"]
+              },
+
+              "body_site": {
+                "type": ["string", "null"],
+                "description": "Anatomical location",
+                "examples": ["breast"]
+              },
+
+              "laterality": {
+                "type": ["string", "null"],
+                "description": "Side of body",
+                "enum": ["right", "left", "bilateral", "unknown", null]
+              },
+
+              "date": {
+                "type": ["string", "null"],
+                "description": "Date or timeframe of procedure (free text allowed; ISO-8601 recommended)",
+                "examples": ["2024-03-15"]
+              },
+              
+              "evidence": {
+                "type": ["string", "null"],
+                "description": "Short quote or sentence fragment supporting the extraction"
+              },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["name", "status"]
+          },
+          "default": []
+        },
+
+
+        "treatments": {
+          "type": "array",
+          "description": "Therapy courses/regimens (radiation dose+fractions, chemo cycles, endocrine/targeted regimen plans); avoid duplicating every medication here unless representing a course/regimen rather than a single med mention.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+
+              "type": {
+                "type": "string",
+                "description": "Type of treatment",
+                "enum": [
+                  "surgery",
+                  "radiation",
+                  "chemotherapy",
+                  "immunotherapy",
+                  "hormone_therapy",
+                  "targeted_therapy",
+                  "medication",
+                  "other"
+                ]
+              },
+
+              "name": {
+                "type": "string",
+                "description": "Name of the treatment or regimen",
+                "examples": ["PMRT"]
+              },
+
+              "dose": {
+                "type": ["string", "null"],
+                "description": "Dose amount",
+                "examples": ["5000"]
+              },
+
+              "unit": {
+                "type": ["string", "null"],
+                "description": "Dose unit",
+                "examples": ["cGy"]
+              },
+
+              "fractions": {
+                "type": ["integer", "null"],
+                "description": "Number of fractions (for radiation)",
+                "examples": [25]
+              },
+
+              "boost_dose": {
+                "type": ["string", "null"],
+                "description": "Boost dose amount (for radiation)",
+                "examples": ["1000"]
+              },
+
+              "boost_unit": {
+                "type": ["string", "null"],
+                "description": "Boost dose unit (for radiation)",
+                "examples": ["cGy"]
+              },
+
+              "route": {
+                "type": ["string", "null"],
+                "description": "Route of administration",
+                "examples": ["IM"]
+              },
+
+              "frequency": {
+                "type": ["string", "null"],
+                "description": "Dosing frequency",
+                "examples": ["q28d"]
+              },
+
+              "cycles": {
+                "type": ["integer", "null"],
+                "description": "Number of treatment cycles",
+                "examples": [6]
+              },
+
+              "status": {
+                "type": ["string", "null"],
+                "description": "Treatment course state: completed, ongoing, planned, discontinued. Map to temporality: completed→past, ongoing→current, planned→planned, discontinued→resolved. Use time.duration or time.when for course timing.",
+                "enum": ["completed", "ongoing", "planned", "discontinued", null]
+              },
+
+              "evidence": {
+                "type": ["string", "null"],
+                "description": "Short quote or sentence fragment supporting the extraction"
+              },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["type", "name"]
+          },
+          "default": []
+        },
+
+
+        "observations": {
+          "type": "array",
+          "description": "Objective measurements, test results, and scored assessments (imaging findings, pathology biomarkers, labs, vitals, clinical scores); set category to indicate source (imaging|pathology|lab|vital|clinical).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+
+              "category": {
+                "type": "string",
+                "description": "Type of observation",
+                "enum": ["imaging", "pathology", "lab", "vital", "clinical", "genomics", "microbiology", "device"]
+              },
+
+              "test": {
+                "type": "string",
+                "description": "Name of the test or observation",
+                "examples": ["mammogram"]
+              },
+
+              "status": {
+                "type": "string",
+                "description": "Assertion axis: is the observation present, negated, uncertain, historical, or planned? For 'history of X', prefer status=present + temporality=past; historical is allowed but less precise.",
+                "enum": ["present", "negated", "uncertain", "historical", "planned"]
+              },
+
+              "certainty": {
+                "type": ["string", "null"],
+                "description": "Level of certainty",
+                "enum": ["suspected", "confirmed", "ruled_out", "unknown", null]
+              },
+
+              "value": {
+                "type": ["string", "null"],
+                "description": "Result value",
+                "examples": ["90"]
+              },
+
+              "unit": {
+                "type": ["string", "null"],
+                "description": "Unit of measurement",
+                "examples": ["%"]
+              },
+
+              "interpretation": {
+                "type": ["string", "null"],
+                "description": "Free-text clinical interpretation, e.g., 'positive', 'equivocal', 'BI-RADS 5'",
+                "examples": ["positive"]
+              },
+
+              "flag": {
+                "type": ["string", "null"],
+                "description": "Normalized interpretation label for easy filtering/analytics",
+                "enum": ["positive", "negative", "high", "low", "normal", "abnormal", "equivocal", "unknown", null]
+              },
+
+              "body_site": {
+                "type": ["string", "null"],
+                "description": "Anatomical location",
+                "examples": ["breast"]
+              },
+
+              "laterality": {
+                "type": ["string", "null"],
+                "description": "Side of body",
+                "enum": ["right", "left", "bilateral", "unknown", null]
+              },
+
+              "location_detail": {
+                "type": ["string", "null"],
+                "description": "Quadrant/clock-face/landmarks/distances"
+              },
+
+              "finding": {
+                "type": ["string", "null"],
+                "description": "Specific finding description",
+                "examples": ["hypoechoic lesion"]
+              },
+
+              "assessment": {
+                "type": ["string", "null"],
+                "description": "Assessment score or category",
+                "examples": ["BI-RADS 5"]
+              },
+
+              "method": {
+                "type": ["string", "null"],
+                "description": "Method used (IHC, FISH, etc.)",
+                "examples": ["IHC"]
+              },
+
+              "measurements": {
+                "type": "array",
+                "description": "List of measurements (empty if none)",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+
+                    "name": {
+                      "type": ["string", "null"],
+                      "description": "Name or dimension of measurement",
+                      "examples": ["tumor size"]
+                    },
+
+                    "value": {
+                      "type": "string",
+                      "description": "Measured value",
+                      "examples": ["14 x 13 x 18"]
+                    },
+
+                    "unit": {
+                      "type": ["string", "null"],
+                      "description": "Unit of measurement",
+                      "examples": ["mm"]
+                    }
+                  },
+                  "required": ["name", "value", "unit"]
+                },
+                "default": []
+              },
+
+              "evidence": {
+                "type": ["string", "null"],
+                "description": "Short quote or sentence fragment supporting the extraction"
+              },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["category", "test", "status"]
+          },
+          "default": []
+        },
+
+
+        "family_history": {
+          "type": "array",
+          "description": "Family history of conditions with relationship and status (positive/negative/unknown); do not include the patient's own diagnoses here.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+
+              "condition": {
+                "type": "string",
+                "description": "Name of the condition",
+                "examples": ["breast cancer"]
+              },
+
+              "relative": {
+                "type": "string",
+                "description": "Relationship to patient",
+                "examples": ["mother"]
+              },
+
+              "relative_type": {
+                "type": ["string", "null"],
+                "description": "Category of relative",
+                "enum": ["first_degree", "second_degree", "third_degree", "unknown", null]
+              },
+
+              "age_at_diagnosis": {
+                "type": ["integer", "null"],
+                "description": "Age of relative at diagnosis",
+                "examples": [52]
+              },
+
+              "status": {
+                "type": ["string", "null"],
+                "description": "Whether family history is positive or negative",
+                "enum": ["positive", "negative", "unknown", null]
+              },
+
+              "evidence": {
+                "type": ["string", "null"],
+                "description": "Short quote or sentence fragment supporting the extraction"
+              }
+
+            },
+            "required": ["condition", "relative", "status"]
+          },
+          "default": []
+        },
+
+
+        "outcome": {
+          "type": ["object", "null"],
+          "description": "Clinical outcome at end of note (if stated)",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["alive", "deceased", "unknown"],
+              "description": "Patient status at end of narrative"
+            },
+            "timeframe": {
+              "type": ["string", "null"],
+              "description": "When outcome occurred (free text; e.g., '32 months after surgery')"
+            },
+            "cause": {
+              "type": ["string", "null"],
+              "description": "Cause of death/outcome if explicitly stated"
+            },
+            "evidence": {
+              "type": ["string", "null"],
+              "description": "Supporting quote"
+            }
+          },
+          "required": ["status"]
+        },
+
+
+        "allergies": {
+          "type": "array",
+          "description": "Allergies, intolerances, and adverse drug reactions (including explicit 'NKDA' / 'no known allergies').",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "substance": { "type": "string", "description": "Allergen/drug/food", "examples": ["penicillin"] },
+              "type": { "type": ["string", "null"], "description": "Type of reaction", "enum": ["allergy", "intolerance", "adverse_reaction", "unknown", null] },
+              "reaction": { "type": ["string", "null"], "description": "Reaction details", "examples": ["rash", "anaphylaxis"] },
+              "severity": { "type": ["string", "null"], "enum": ["mild", "moderate", "severe", "unknown", null] },
+              "status": { "type": "string", "description": "Whether allergy is present or negated", "enum": ["present", "negated", "unknown"] },
+              "evidence": { "type": ["string", "null"] },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["substance", "status"]
+          },
+          "default": []
+        },
+
+
+        "social_history": {
+          "type": "array",
+          "description": "Social history exposures and behaviors (tobacco, alcohol, recreational drugs, etc.).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "domain": { "type": "string", "enum": ["tobacco", "alcohol", "drug", "other"] },
+              "status": { "type": "string", "enum": ["current", "former", "never", "unknown"] },
+              "substance": { "type": ["string", "null"], "examples": ["cigarettes", "cannabis"] },
+              "amount": { "type": ["string", "null"], "examples": ["1 pack/day", "2 drinks/day"] },
+              "frequency": { "type": ["string", "null"], "examples": ["daily", "weekly"] },
+              "timeframe": { "type": ["string", "null"], "examples": ["x10 years", "last use yesterday"] },
+              "evidence": { "type": ["string", "null"] },
+
+              "temporality": {
+                "type": ["string", "null"],
+                "description": "When the item applies in time relative to the note",
+                "enum": ["current", "past", "planned", "resolved", "unknown", null]
+              },
+
+              "time": {
+                "type": ["object", "null"],
+                "description": "Timing information if stated; use free-text when exact dates are not available",
+                "additionalProperties": false,
+                "properties": {
+                  "when": {
+                    "type": ["string", "null"],
+                    "description": "Free-text timing (e.g., 'postoperative day 2', '8 months later', 'since childhood')"
+                  },
+                  "start": {
+                    "type": ["string", "null"],
+                    "description": "Start date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "end": {
+                    "type": ["string", "null"],
+                    "description": "End date/time if explicitly stated (ISO-8601 if possible)"
+                  },
+                  "duration": {
+                    "type": ["string", "null"],
+                    "description": "Duration if stated (e.g., '3 days', '4 months')"
+                  }
+                }
+              }
+            },
+            "required": ["domain", "status"]
+          },
+          "default": []
+        },
+
+
+        "age": {
+          "type": ["object", "null"],
+          "description": "Patient's age with value and unit",
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "integer",
+              "description": "Numeric age value",
+              "examples": [45]
+            },
+            "unit": {
+              "type": "string",
+              "description": "Age unit",
+              "enum": ["days", "weeks", "months", "years"]
+            }
+          },
+          "required": ["value", "unit"]
+        },
+        
+        "species": {
+          "type": ["string", "null"],
+          "description": "Patient's species",
+          "examples": ["human", "alpaca"]
+        },
+
+
+        "sex": {
+          "type": ["string", "null"],
+          "description": "Patient's biological sex",
+          "enum": ["M", "F", null],
+          "examples": ["M"]
+        },
+
+
+        "chief_complaint": {
+          "type": ["string", "null"],
+          "description": "Primary reason for the visit",
+          "examples": ["chest pain"]
+        },
+
+
+        "primary_diagnosis": {
+          "type": ["string", "null"],
+          "description": "Main diagnosis or working diagnosis (only if provided, null if unknown)",
+          "examples": ["acute myocardial infarction"]
+        },
+
+
+        "care_setting": {
+          "type": ["string", "null"],
+          "description": "Clinical care setting (null if unknown)",
+          "enum": ["ED", "inpatient", "outpatient", "ICU", "unknown", null],
+          "examples": ["ED"]
+        },
+
+
+        "pregnant": {
+          "type": ["boolean", "null"],
+          "description": "Whether the patient is pregnant (null if unknown or not applicable)"
+        },
+
+        "specialties": {
+            "type": "array",
+            "description": "Broad specialties for routing. Includes ACGME specialties + ABMS specialty certificates, plus a small set of commonly-used broad clinical domains (e.g., cardiology) for pragmatic labeling.",
+            "items": {
+            "type": "string",
+            "enum": [
+                "aerospace_medicine",
+                "allergy_and_immunology",
+                "anesthesiology",
+                "cardiology",
+                "clinical_biochemical_genetics",
+                "clinical_genetics_and_genomics_md",
+                "colon_and_rectal_surgery",
+                "critical_care",
+                "dermatology",
+                "diagnostic_radiology",
+                "emergency_medicine",
+                "endocrinology",
+                "family_medicine",
+                "general_surgery",
+                "geriatrics",
+                "hepatology",
+                "internal_medicine",
+                "interventional_radiology_and_diagnostic_radiology",
+                "laboratory_genetics_and_genomics",
+                "medical_genetics_and_genomics",
+                "medical_physics_diagnostic_nuclear_therapeutic",
+                "neonatology",
+                "neurological_surgery",
+                "neurology",
+                "neurology_with_special_qualification_in_child_neurology",
+                "nuclear_medicine",
+                "obstetrics_and_gynecology",
+                "occupational_and_environmental_medicine",
+                "oncology",
+                "ophthalmology",
+                "orthopaedic_surgery",
+                "osteopathic_neuromusculoskeletal_medicine",
+                "otolaryngology_head_and_neck_surgery",
+                "pathology",
+                "pathology_anatomic",
+                "pathology_anatomic_and_clinical",
+                "pathology_clinical",
+                "pediatrics",
+                "physical_medicine_and_rehabilitation",
+                "plastic_surgery",
+                "preventive_medicine",
+                "psychiatry",
+                "public_health_and_general_preventive_medicine",
+                "pulmonology",
+                "radiation_oncology",
+                "radiology",
+                "surgery",
+                "thoracic_and_cardiac_surgery",
+                "thoracic_surgery",
+                "transitional_year",
+                "urology",
+                "vascular_surgery",
+                "veterinary_medicine"
+            ]
+            },
+            "default": [],
+            "uniqueItems": true,
+            "examples": [["cardiology", "internal_medicine", "radiation_oncology"]]
+        },
+
+        "subspecialties": {
+            "type": "array",
+            "description": "Narrower ABMS-style subspecialty certificates. Includes a couple of common service-line tags (trauma/transplant surgery) that are not ABMS certificates.",
+            "items": {
+            "type": "string",
+            "enum": [
+                "addiction_medicine",
+                "addiction_psychiatry",
+                "adolescent_medicine",
+                "adult_cardiac_anesthesiology",
+                "adult_congenital_heart_disease",
+                "advanced_heart_failure_and_transplant_cardiology",
+                "anesthesiology_critical_care_medicine",
+                "blood_banking_transfusion_medicine",
+                "brain_injury_medicine",
+                "cardiovascular_disease",
+                "child_abuse_pediatrics",
+                "child_and_adolescent_psychiatry",
+                "clinical_cardiac_electrophysiology",
+                "clinical_informatics",
+                "clinical_neurophysiology",
+                "complex_family_planning",
+                "complex_general_surgical_oncology",
+                "complex_pediatric_otolaryngology",
+                "congenital_cardiac_surgery",
+                "consultation_liaison_psychiatry",
+                "critical_care_medicine",
+                "cytopathology",
+                "dermatopathology",
+                "developmental_behavioral_pediatrics",
+                "emergency_medical_services",
+                "endocrinology_diabetes_and_metabolism",
+                "epilepsy",
+                "forensic_psychiatry",
+                "gastroenterology",
+                "geriatric_medicine",
+                "geriatric_psychiatry",
+                "gynecologic_oncology",
+                "health_care_administration_leadership_and_management",
+                "hematology",
+                "hematopathology",
+                "hospice_and_palliative_medicine",
+                "infectious_disease",
+                "internal_medicine_critical_care_medicine",
+                "interventional_cardiology",
+                "maternal_fetal_medicine",
+                "medical_biochemical_genetics",
+                "medical_oncology",
+                "medical_toxicology",
+                "micrographic_dermatologic_surgery",
+                "molecular_genetic_pathology",
+                "neonatal_perinatal_medicine",
+                "nephrology",
+                "neurocritical_care",
+                "neurodevelopmental_disabilities",
+                "neuroradiology",
+                "neurotology",
+                "neuromuscular_medicine",
+                "neuropathology",
+                "nuclear_radiology",
+                "orthopaedic_sports_medicine",
+                "pain_medicine",
+                "pathology_chemical",
+                "pathology_forensic",
+                "pathology_medical_microbiology",
+                "pathology_molecular_genetic",
+                "pathology_pediatric",
+                "pediatric_anesthesiology",
+                "pediatric_cardiology",
+                "pediatric_critical_care_medicine",
+                "pediatric_dermatology",
+                "pediatric_emergency_medicine",
+                "pediatric_endocrinology",
+                "pediatric_gastroenterology",
+                "pediatric_hematology_oncology",
+                "pediatric_hospital_medicine",
+                "pediatric_infectious_diseases",
+                "pediatric_nephrology",
+                "pediatric_pulmonology",
+                "pediatric_radiology",
+                "pediatric_rehabilitation_medicine",
+                "pediatric_rheumatology",
+                "pediatric_surgery",
+                "pediatric_transplant_hepatology",
+                "pediatric_urology",
+                "plastic_surgery_within_the_head_and_neck",
+                "pulmonary_disease",
+                "reproductive_endocrinology_and_infertility",
+                "rheumatology",
+                "sleep_medicine",
+                "sports_medicine",
+                "spinal_cord_injury_medicine",
+                "surgical_critical_care",
+                "surgery_of_the_hand",
+                "transplant_hepatology",
+                "undersea_and_hyperbaric_medicine",
+                "urogynecology_and_reconstructive_pelvic_surgery",
+                "vascular_neurology",
+                "trauma_surgery",
+                "transplant_surgery"
+            ]
+            },
+            "default": [],
+            "uniqueItems": true,
+            "examples": [["medical_oncology", "transplant_hepatology", "hospice_and_palliative_medicine"]]
+        }
+
+      },
+      "required": [
+        "age",
+        "allergies",
+        "sex",
+        "social_history",
+        "chief_complaint",
+        "primary_diagnosis",
+        "care_setting",
+        "pregnant",
+        "specialties",
+        "species",
+        "subspecialties",
+        "conditions",
+        "symptoms_signs",
+        "medications",
+        "procedures",
+        "treatments",
+        "observations",
+        "outcome",
+        "family_history"
+      ]
+    }
+  }
+}
