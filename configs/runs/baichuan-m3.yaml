@@ -13,7 +13,6 @@ run:
   batch_size: 32
   shard_size: 50000
   max_notes: 0
-  max_input_chars: 8000
 
   resume: true
 
@@ -28,7 +27,6 @@ model:
 prompt:
   # Baichuan-M3 examples use thinking_mode='on' in the tokenizer template. :contentReference[oaicite:2]{index=2}
   # For *structured JSON extraction*, you generally want to disable thinking.
-  style: compact
   chat_template_kwargs:
     thinking_mode: "off"
 

@@ -18,6 +18,7 @@ from pathlib import Path
 from datasets import load_dataset
 from huggingface_hub import HfApi
 
+from ..utils.utils import colored, print_header
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
@@ -68,6 +69,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    print_header("Open-Patients Push")
 
     data_dir = Path(args.data_dir)
     if not data_dir.exists():
@@ -78,16 +80,22 @@ def main() -> None:
     if not jsonl_files:
         raise FileNotFoundError(f"No JSONL files found in {data_dir}")
 
-    print(f"Found {len(jsonl_files)} JSONL file(s) in {data_dir}")
+    print(
+        f"Found {colored(str(len(jsonl_files)), 'GREEN')} JSONL file(s) in "
+        f"{colored(str(data_dir), 'CYAN')}"
+    )
 
     # Load dataset from JSONL shards
-    print("Loading dataset...")
+    print(colored("Loading dataset...", "CYAN"))
     ds = load_dataset(
         "json",
         data_files=str(data_dir / "*.jsonl"),
         split="train",
     )
-    print(f"Loaded {len(ds)} records with columns: {ds.column_names}")
+    print(
+        f"Loaded {colored(str(len(ds)), 'GREEN')} records with columns: "
+        f"{colored(str(ds.column_names), 'GREEN')}"
+    )
 
     # Build repo ID
     if args.org:
@@ -95,7 +103,7 @@ def main() -> None:
     else:
         repo_id = args.repo_name
 
-    print(f"Pushing to: {repo_id}")
+    print(f"Pushing to: {colored(repo_id, 'CYAN')}")
 
     # Create the repo if it doesn't exist
     api = HfApi(token=args.token)
@@ -107,11 +115,14 @@ def main() -> None:
             exist_ok=True,
         )
     except Exception as e:
-        print(f"Note: Could not create repo (may already exist): {e}")
+        print(f"{colored('Note:', 'YELLOW')} Could not create repo (may already exist): {e}")
 
     # Push to hub
     if args.parquet:
-        print(f"Converting to Parquet and pushing (max shard size: {args.max_shard_size})...")
+        print(
+            f"{colored('Converting to Parquet and pushing', 'CYAN')} "
+            f"(max shard size: {colored(args.max_shard_size, 'GREEN')})..."
+        )
         ds.push_to_hub(
             repo_id,
             token=args.token,
@@ -120,7 +131,7 @@ def main() -> None:
             max_shard_size=args.max_shard_size,
         )
     else:
-        print("Pushing as JSONL...")
+        print(colored("Pushing as JSONL...", "CYAN"))
         ds.push_to_hub(
             repo_id,
             token=args.token,
@@ -128,7 +139,10 @@ def main() -> None:
             commit_message=args.commit_message,
         )
 
-    print(f"\nDone! Dataset available at: https://huggingface.co/datasets/{repo_id}")
+    print(
+        f"\n{colored('Done!', 'GREEN')} Dataset available at: "
+        f"{colored(f'https://huggingface.co/datasets/{repo_id}', 'CYAN')}"
+    )
 
 
 if __name__ == "__main__":

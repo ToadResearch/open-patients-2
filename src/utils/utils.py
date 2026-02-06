@@ -12,6 +12,22 @@ from typing import Optional, Any, Dict
 _JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
+def colored(st, color: str | None, background: bool = False):
+    colors = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"]
+    if color is None:
+        return st
+    return (
+        f"\u001b[{10*background+60*(color.upper() == color)+30+colors.index(color.lower())}m"
+        f"{st}\u001b[0m"
+    )
+
+
+def print_header(title: str, color: str = "CYAN") -> None:
+    line = "-" * len(title)
+    print(colored(title, color))
+    print(colored(line, color))
+
+
 def now_iso() -> str:
     """Return current UTC time as ISO 8601 string."""
     return dt.datetime.now(dt.timezone.utc).isoformat()
@@ -36,15 +52,6 @@ def safe_json_extract(text: str) -> Optional[dict]:
             return json.loads(blob2)
         except Exception:
             return None
-
-
-def truncate_note(note: str, max_chars: int) -> str:
-    """Truncate long notes, keeping head and tail for context."""
-    if len(note) <= max_chars:
-        return note
-    head = note[: max_chars // 2]
-    tail = note[-(max_chars // 2) :]
-    return head + "\n...\n" + tail
 
 
 def make_chat_prompt(

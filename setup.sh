@@ -22,5 +22,10 @@ echo "[setup] Installing system build dependencies..."
 sudo apt-get update
 sudo apt-get install -y build-essential python3.12-dev
 
+echo "[setup] Installing CUDA compatibility package..."
+sudo apt-get install -y cuda-compat-12-9
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.9/compat:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+
 echo "[setup] GPU check..."
 nvidia-smi

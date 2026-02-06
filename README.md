@@ -190,14 +190,9 @@ Skips input `_id`s already present in `processed_ids.txt` (stored in `out_dir`).
 `--batch_size`
 Increase for throughput if you have GPU headroom. If you OOM, reduce it.
 
-`--max_input_chars`
-Truncates long notes by keeping the beginning and end with an ellipsis in the middle.
 
 `--tensor_parallel_size`
 Set `>1` if your vLLM is running across multiple GPUs.
-
-`--prompt_style`
-Use `compact` to avoid dumping large enum lists into the prompt (recommended with structured output).
 
 `--prompt_mode`
 Use `plain` to bypass the tokenizer chat template for non-chat models.

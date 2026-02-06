@@ -4,7 +4,6 @@ run:
   out_dir: ./open_patients_enriched_qwen3_235b_a22b
   resume: true
   max_notes: 0
-  max_input_chars: 8000
   shard_size: 50000
   schema: configs/schemas/schema.json
   usmle_mapping: configs/usmle_mapping.json
@@ -37,7 +36,6 @@ sampling:
   structured_output: true
 
 prompt:
-  style: compact
   disable_thinking: true
 
 parallel:

@@ -46,7 +46,6 @@ def config_to_defaults(cfg: Dict[str, Any]) -> Dict[str, Any]:
     _maybe_set(defaults, "processed_ids", run.get("processed_ids"))
     _maybe_set(defaults, "batch_size", run.get("batch_size"))
     _maybe_set(defaults, "max_notes", run.get("max_notes"))
-    _maybe_set(defaults, "max_input_chars", run.get("max_input_chars"))
     _maybe_set(defaults, "shard_size", run.get("shard_size"))
     _maybe_set(defaults, "resume", run.get("resume"))
     _maybe_set(defaults, "num_shards", run.get("num_shards"))
@@ -85,7 +84,6 @@ def config_to_defaults(cfg: Dict[str, Any]) -> Dict[str, Any]:
     _maybe_set(defaults, "structured_output", sampling.get("structured_output"))
 
     # prompt section
-    _maybe_set(defaults, "prompt_style", prompt.get("style"))
     _maybe_set(defaults, "disable_thinking", prompt.get("disable_thinking"))
     _maybe_set(defaults, "chat_template_kwargs", prompt.get("chat_template_kwargs"))
 

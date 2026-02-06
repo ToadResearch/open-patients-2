@@ -21,11 +21,52 @@ from ..core.extraction import derive_source_url, ensure_schema, load_usmle_id_to
 from ..core.llm_vllm import build_llm, build_sampling
 from ..core.prompts import USER_TEMPLATE, build_system_prompt
 from ..core.schema_loader import load_schema
-from ..core.utils import make_chat_prompt, now_iso, safe_json_extract, truncate_note
+from ..utils.utils import colored, make_chat_prompt, now_iso, print_header, safe_json_extract
 from ..core.writer import JSONLShardedWriter, load_processed_ids, ProcessedIdWriter
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    base_defaults = {
+        "dataset": "ncbi/Open-Patients",
+        "split": "train",
+        "model": None,
+        "prompt_mode": "chat",
+        "out_dir": None,
+        "processed_ids": "processed_ids.txt",
+        "schema": "configs/schemas/schema.json",
+        "usmle_mapping": "configs/usmle_mapping.json",
+        "chat_template_kwargs": None,
+        "run_id": None,
+        "run_tag": None,
+        "batch_size": 32,
+        "max_notes": 0,
+        "max_new_tokens": 700,
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 0,
+        "tensor_parallel_size": 1,
+        "pipeline_parallel_size": 1,
+        "data_parallel_size": 1,
+        "enable_expert_parallel": False,
+        "max_model_len": 8192,
+        "gpu_memory_utilization": 0.92,
+        "dtype": "auto",
+        "enable_chunked_prefill": False,
+        "max_num_batched_tokens": 8192,
+        "max_num_seqs": 128,
+        "enable_prefix_caching": False,
+        "kv_cache_dtype": "fp8",
+        "calculate_kv_scales": False,
+        "quantization": None,
+        "max_parallel_loading_workers": 2,
+        "shard_size": 50_000,
+        "resume": False,
+        "structured_output": False,
+        "disable_thinking": False,
+        "num_shards": 1,
+        "shard_idx": 0,
+    }
+
     config_parser = argparse.ArgumentParser(add_help=False)
     config_parser.add_argument(
         "--config", default=None, help="Run profile YAML (configs/runs/*.yaml)"
@@ -33,106 +74,90 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     cfg_args, remaining = config_parser.parse_known_args(argv)
 
     cfg = load_run_config(cfg_args.config) if cfg_args.config else {}
-    defaults = config_to_defaults(cfg)
+    defaults = dict(base_defaults)
+    defaults.update(config_to_defaults(cfg))
+    defaults["config"] = cfg_args.config
 
     ap = argparse.ArgumentParser(
         description="Enrich Open-Patients dataset with structured clinical fields."
     )
     ap.add_argument(
-        "--config", default=cfg_args.config, help="Run profile YAML (configs/runs/*.yaml)"
+        "--config", help="Run profile YAML (configs/runs/*.yaml)"
     )
-    ap.add_argument("--dataset", default="ncbi/Open-Patients", help="HF dataset name")
-    ap.add_argument("--split", default="train", help="dataset split (Open-Patients uses train)")
-    ap.add_argument("--model", default=None, help="vLLM model name or path")
+    ap.add_argument("--dataset", help="HF dataset name")
+    ap.add_argument("--split", help="dataset split (Open-Patients uses train)")
+    ap.add_argument("--model", help="vLLM model name or path")
     ap.add_argument(
         "--prompt_mode",
-        default="chat",
         choices=["chat", "plain"],
         help="Prompt formatting mode (chat uses tokenizer template if available)",
     )
-    ap.add_argument(
-        "--prompt_style",
-        default="verbose",
-        choices=["compact", "verbose"],
-        help="Prompt verbosity (compact avoids large enum lists)",
-    )
 
-    ap.add_argument("--out_dir", default=None, help="Output directory for enriched JSONL shards")
+    ap.add_argument("--out_dir", help="Output directory for enriched JSONL shards")
     ap.add_argument(
         "--processed_ids",
-        default="processed_ids.txt",
         help="Resume marker file (in out_dir by default)",
     )
     ap.add_argument(
         "--schema",
-        default="configs/schemas/schema.json",
         help="Path to JSON schema wrapper (default: configs/schemas/schema.json)",
     )
     ap.add_argument(
         "--usmle_mapping",
-        default="configs/usmle_mapping.json",
         help="Path to configs/usmle_mapping.json (for usmle-<num> -> HF viewer row mapping)",
     )
     ap.add_argument(
         "--chat_template_kwargs",
-        default=None,
         help="JSON dict of chat template kwargs (merged with --disable_thinking)",
     )
     ap.add_argument(
         "--run_id",
-        default=None,
         help="Optional run id subfolder name (under out_dir)",
     )
     ap.add_argument(
         "--run_tag",
-        default=None,
         help="Optional tag to prefix output shards/metadata (for multi-process runs)",
     )
 
-    ap.add_argument("--batch_size", type=int, default=32, help="#prompts per llm.generate() call")
-    ap.add_argument("--max_notes", type=int, default=0, help="0 = all")
-    ap.add_argument(
-        "--max_input_chars", type=int, default=8000, help="truncate long notes for speed"
-    )
-    ap.add_argument("--max_new_tokens", type=int, default=700)
+    ap.add_argument("--batch_size", type=int, help="#prompts per llm.generate() call")
+    ap.add_argument("--max_notes", type=int, help="0 = all")
+    ap.add_argument("--max_new_tokens", type=int)
 
-    ap.add_argument("--temperature", type=float, default=0.0)
-    ap.add_argument("--top_p", type=float, default=1.0)
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--temperature", type=float)
+    ap.add_argument("--top_p", type=float)
+    ap.add_argument("--seed", type=int)
 
     # Parallelism / memory
-    ap.add_argument("--tensor_parallel_size", type=int, default=1)
-    ap.add_argument("--pipeline_parallel_size", type=int, default=1)
-    ap.add_argument("--data_parallel_size", type=int, default=1)
+    ap.add_argument("--tensor_parallel_size", type=int)
+    ap.add_argument("--pipeline_parallel_size", type=int)
+    ap.add_argument("--data_parallel_size", type=int)
 
     ap.add_argument(
         "--enable_expert_parallel", action="store_true", help="Recommended for MoE models"
     )
-    ap.add_argument("--max_model_len", type=int, default=8192, help="vLLM max context")
-    ap.add_argument("--gpu_memory_utilization", type=float, default=0.92)
-    ap.add_argument("--dtype", default="auto", help='vLLM dtype, e.g. "auto", "bf16", "fp16"')
+    ap.add_argument("--max_model_len", type=int, help="vLLM max context")
+    ap.add_argument("--gpu_memory_utilization", type=float)
+    ap.add_argument("--dtype", help='vLLM dtype, e.g. "auto", "bf16", "fp16"')
 
     # Throughput knobs
     ap.add_argument("--enable_chunked_prefill", action="store_true", help="Enable chunked prefill")
-    ap.add_argument("--max_num_batched_tokens", type=int, default=8192)
-    ap.add_argument("--max_num_seqs", type=int, default=128)
+    ap.add_argument("--max_num_batched_tokens", type=int)
+    ap.add_argument("--max_num_seqs", type=int)
     ap.add_argument("--enable_prefix_caching", action="store_true")
 
     # KV cache
-    ap.add_argument("--kv_cache_dtype", default="fp8", help='e.g. "auto", "fp8"')
+    ap.add_argument("--kv_cache_dtype", help='e.g. "auto", "fp8"')
     ap.add_argument(
         "--calculate_kv_scales", action="store_true", help="Calibrate KV FP8 scales at warmup"
     )
 
     # Quantization override (optional; pre-quantized checkpoints often work with auto)
-    ap.add_argument("--quantization", default=None, help='e.g. "marlin", "gptq", "awq", "fp8"')
+    ap.add_argument("--quantization", help='e.g. "marlin", "gptq", "awq", "fp8"')
 
     # Loading stability
-    ap.add_argument(
-        "--max_parallel_loading_workers", type=int, default=2, help="Avoid CPU RAM spikes on load"
-    )
+    ap.add_argument("--max_parallel_loading_workers", type=int, help="Avoid CPU RAM spikes on load")
 
-    ap.add_argument("--shard_size", type=int, default=50_000, help="JSONL records per output shard")
+    ap.add_argument("--shard_size", type=int, help="JSONL records per output shard")
     ap.add_argument("--resume", action="store_true", help="Skip IDs already in processed_ids file")
 
     ap.add_argument("--structured_output", action="store_true", help="Use vLLM structured output")
@@ -141,8 +166,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     # Manual dataset sharding across processes (CPU-side); useful for 2× replica mode
-    ap.add_argument("--num_shards", type=int, default=1)
-    ap.add_argument("--shard_idx", type=int, default=0)
+    ap.add_argument("--num_shards", type=int)
+    ap.add_argument("--shard_idx", type=int)
 
     ap.set_defaults(**defaults)
     return ap.parse_args(remaining)
@@ -150,6 +175,9 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    print_header("Open-Patients Worker")
+    if args.config:
+        print(f"Config: {colored(args.config, 'CYAN')}")
     if not args.model:
         raise SystemExit("Missing --model (or model.name in --config).")
     if not args.out_dir:
@@ -270,7 +298,7 @@ def main() -> None:
         # Qwen3-style tokenizers commonly support enable_thinking=False
         chat_template_kwargs["enable_thinking"] = False
     force_plain = args.prompt_mode == "plain"
-    system_prompt = build_system_prompt(schema_bundle, style=args.prompt_style)
+    system_prompt = build_system_prompt(schema_bundle)
 
     buf_ids: List[str] = []
     buf_notes: List[str] = []
@@ -315,8 +343,7 @@ def main() -> None:
 
         prompts = []
         for note in buf_notes:
-            note2 = truncate_note(note, args.max_input_chars)
-            user = USER_TEMPLATE.format(note=note2, keys=keys_str)
+            user = USER_TEMPLATE.format(note=note, keys=keys_str)
             prompt = make_chat_prompt(
                 tokenizer,
                 system_prompt,
@@ -466,16 +493,17 @@ def main() -> None:
     metadata_path = out_dir / metadata_name
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
-    print("\nDone.")
-    print(f"  seen:    {n_total}")
-    print(f"  wrote:   {n_written}")
-    print(f"  skipped: {n_skipped}")
-    print(f"  failed:  {n_failed}")
-    print(f"  out_dir: {out_dir.resolve()}")
+    print("\n" + colored("Done.", "GREEN"))
+    print(f"  seen:    {colored(str(n_total), 'GREEN')}")
+    print(f"  wrote:   {colored(str(n_written), 'GREEN')}")
+    print(f"  skipped: {colored(str(n_skipped), 'YELLOW')}")
+    failed_color = "RED" if n_failed else "GREEN"
+    print(f"  failed:  {colored(str(n_failed), failed_color)}")
+    print(f"  out_dir: {colored(str(out_dir.resolve()), 'CYAN')}")
     if out_dir != base_out_dir:
-        print(f"  base:    {base_out_dir.resolve()}")
-    print(f"  meta:    {metadata_path.resolve()}")
-    print(f"  resume:  {processed_path.resolve()}")
+        print(f"  base:    {colored(str(base_out_dir.resolve()), 'CYAN')}")
+    print(f"  meta:    {colored(str(metadata_path.resolve()), 'CYAN')}")
+    print(f"  resume:  {colored(str(processed_path.resolve()), 'CYAN')}")
 
 
 if __name__ == "__main__":

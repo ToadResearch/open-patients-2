@@ -23,6 +23,8 @@ def _require_vllm():
 def _filter_kwargs(fn: Any, kwargs: Dict[str, Any]) -> Dict[str, Any]:
     """Only pass kwargs that exist in the installed vLLM version."""
     sig = inspect.signature(fn)
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+        return {k: v for k, v in kwargs.items() if v is not None}
     return {k: v for k, v in kwargs.items() if (v is not None and k in sig.parameters)}
 
 
@@ -94,26 +96,47 @@ def build_sampling(
     sampling_kwargs = dict(
         temperature=sampling_cfg.get("temperature"),
         top_p=sampling_cfg.get("top_p"),
-        max_tokens=sampling_cfg.get("max_new_tokens"),
         seed=sampling_cfg.get("seed"),
     )
 
+    # vLLM has used both `max_tokens` and `max_new_tokens` across versions.
+    max_new_tokens = sampling_cfg.get("max_new_tokens")
+    sig_sampling = inspect.signature(SamplingParams.__init__)
+    has_var_kwargs = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig_sampling.parameters.values()
+    )
+
+    def _supports_param(name: str) -> bool:
+        if name in sig_sampling.parameters:
+            return True
+        if not has_var_kwargs:
+            return False
+        try:
+            empty = SamplingParams()
+            return hasattr(empty, name)
+        except Exception:
+            return True
+
+    if _supports_param("max_tokens"):
+        sampling_kwargs["max_tokens"] = max_new_tokens
+    elif _supports_param("max_new_tokens"):
+        sampling_kwargs["max_new_tokens"] = max_new_tokens
+
     if structured_output and json_schema is not None:
         inner = json_schema["json_schema"]["schema"]
-        sig = inspect.signature(SamplingParams.__init__)
-        if "structured_outputs" in sig.parameters and StructuredOutputsParams is not None:
+        if _supports_param("structured_outputs") and StructuredOutputsParams is not None:
             sampling_kwargs["structured_outputs"] = _build_structured_params(
                 StructuredOutputsParams, inner
             )
-        elif "guided_decoding" in sig.parameters and GuidedDecodingParams is not None:
+        elif _supports_param("guided_decoding") and GuidedDecodingParams is not None:
             sampling_kwargs["guided_decoding"] = _build_structured_params(
                 GuidedDecodingParams, inner
             )
-        elif "guided_decoding_params" in sig.parameters and GuidedDecodingParams is not None:
+        elif _supports_param("guided_decoding_params") and GuidedDecodingParams is not None:
             sampling_kwargs["guided_decoding_params"] = _build_structured_params(
                 GuidedDecodingParams, inner
             )
-        elif "json_schema" in sig.parameters:
+        elif _supports_param("json_schema"):
             sampling_kwargs["json_schema"] = inner
         else:
             print(

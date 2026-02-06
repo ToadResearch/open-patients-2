@@ -18,7 +18,7 @@ from ..core.config import config_to_defaults, load_run_config
 from ..core.llm_vllm import build_llm, build_sampling
 from ..core.prompts import USER_TEMPLATE, build_system_prompt
 from ..core.schema_loader import load_schema
-from ..core.utils import make_chat_prompt, now_iso, truncate_note
+from ..utils.utils import colored, make_chat_prompt, now_iso, print_header
 
 
 def _apply_benchmark_defaults(defaults: dict, cfg: dict) -> dict:
@@ -30,8 +30,6 @@ def _apply_benchmark_defaults(defaults: dict, cfg: dict) -> dict:
 
     if "batch_size" in bench:
         out["batch_size"] = bench.get("batch_size")
-    if "max_input_chars" in bench:
-        out["max_input_chars"] = bench.get("max_input_chars")
     if "max_new_tokens" in bench:
         out["max_new_tokens"] = bench.get("max_new_tokens")
 
@@ -39,6 +37,42 @@ def _apply_benchmark_defaults(defaults: dict, cfg: dict) -> dict:
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    base_defaults = {
+        "dataset": "ncbi/Open-Patients",
+        "split": "train",
+        "model": None,
+        "prompt_mode": "chat",
+        "schema": "configs/schemas/schema.json",
+        "batch_size": 32,
+        "max_notes": 500,
+        "max_new_tokens": 700,
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 0,
+        "tensor_parallel_size": 1,
+        "pipeline_parallel_size": 1,
+        "data_parallel_size": 1,
+        "enable_expert_parallel": False,
+        "max_model_len": 8192,
+        "gpu_memory_utilization": 0.92,
+        "dtype": "auto",
+        "enable_chunked_prefill": False,
+        "max_num_batched_tokens": 8192,
+        "max_num_seqs": 128,
+        "enable_prefix_caching": False,
+        "kv_cache_dtype": "fp8",
+        "calculate_kv_scales": False,
+        "quantization": None,
+        "max_parallel_loading_workers": 2,
+        "structured_output": False,
+        "disable_thinking": False,
+        "chat_template_kwargs": None,
+        "json_out": None,
+        "num_shards": 1,
+        "shard_idx": 0,
+        "run_tag": None,
+    }
+
     config_parser = argparse.ArgumentParser(add_help=False)
     config_parser.add_argument(
         "--config", default=None, help="Run profile YAML (configs/runs/*.yaml)"
@@ -46,74 +80,59 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     cfg_args, remaining = config_parser.parse_known_args(argv)
 
     cfg = load_run_config(cfg_args.config) if cfg_args.config else {}
-    defaults = config_to_defaults(cfg)
+    defaults = dict(base_defaults)
+    defaults.update(config_to_defaults(cfg))
     defaults = _apply_benchmark_defaults(defaults, cfg)
+    defaults["config"] = cfg_args.config
 
     ap = argparse.ArgumentParser(description="Benchmark Open-Patients enrichment throughput.")
 
-    ap.add_argument(
-        "--config", default=cfg_args.config, help="Run profile YAML (configs/runs/*.yaml)"
-    )
-    ap.add_argument("--dataset", default="ncbi/Open-Patients", help="HF dataset name")
-    ap.add_argument("--split", default="train", help="dataset split (Open-Patients uses train)")
-    ap.add_argument("--model", default=None, help="vLLM model name or path")
+    ap.add_argument("--config", help="Run profile YAML (configs/runs/*.yaml)")
+    ap.add_argument("--dataset", help="HF dataset name")
+    ap.add_argument("--split", help="dataset split (Open-Patients uses train)")
+    ap.add_argument("--model", help="vLLM model name or path")
     ap.add_argument(
         "--prompt_mode",
-        default="chat",
         choices=["chat", "plain"],
         help="Prompt formatting mode (chat uses tokenizer template if available)",
     )
-    ap.add_argument(
-        "--prompt_style",
-        default="verbose",
-        choices=["compact", "verbose"],
-        help="Prompt verbosity (compact avoids large enum lists)",
-    )
 
-    ap.add_argument(
-        "--schema", default="configs/schemas/schema.json", help="Path to JSON schema wrapper"
-    )
-    ap.add_argument("--batch_size", type=int, default=32)
-    ap.add_argument(
-        "--max_notes", type=int, default=500, help="Number of notes to benchmark (0 = all)"
-    )
-    ap.add_argument("--max_input_chars", type=int, default=8000)
-    ap.add_argument("--max_new_tokens", type=int, default=700)
+    ap.add_argument("--schema", help="Path to JSON schema wrapper")
+    ap.add_argument("--batch_size", type=int)
+    ap.add_argument("--max_notes", type=int, help="Number of notes to benchmark (0 = all)")
+    ap.add_argument("--max_new_tokens", type=int)
 
-    ap.add_argument("--temperature", type=float, default=0.0)
-    ap.add_argument("--top_p", type=float, default=1.0)
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--temperature", type=float)
+    ap.add_argument("--top_p", type=float)
+    ap.add_argument("--seed", type=int)
 
     # vLLM args
-    ap.add_argument("--tensor_parallel_size", type=int, default=1)
-    ap.add_argument("--pipeline_parallel_size", type=int, default=1)
-    ap.add_argument("--data_parallel_size", type=int, default=1)
+    ap.add_argument("--tensor_parallel_size", type=int)
+    ap.add_argument("--pipeline_parallel_size", type=int)
+    ap.add_argument("--data_parallel_size", type=int)
     ap.add_argument("--enable_expert_parallel", action="store_true")
-    ap.add_argument("--max_model_len", type=int, default=8192)
-    ap.add_argument("--gpu_memory_utilization", type=float, default=0.92)
-    ap.add_argument("--dtype", default="auto")
+    ap.add_argument("--max_model_len", type=int)
+    ap.add_argument("--gpu_memory_utilization", type=float)
+    ap.add_argument("--dtype")
     ap.add_argument("--enable_chunked_prefill", action="store_true")
-    ap.add_argument("--max_num_batched_tokens", type=int, default=8192)
-    ap.add_argument("--max_num_seqs", type=int, default=128)
+    ap.add_argument("--max_num_batched_tokens", type=int)
+    ap.add_argument("--max_num_seqs", type=int)
     ap.add_argument("--enable_prefix_caching", action="store_true")
-    ap.add_argument("--kv_cache_dtype", default="fp8")
+    ap.add_argument("--kv_cache_dtype")
     ap.add_argument("--calculate_kv_scales", action="store_true")
-    ap.add_argument("--quantization", default=None)
-    ap.add_argument("--max_parallel_loading_workers", type=int, default=2)
+    ap.add_argument("--quantization")
+    ap.add_argument("--max_parallel_loading_workers", type=int)
 
-    ap.add_argument("--num_shards", type=int, default=1)
-    ap.add_argument("--shard_idx", type=int, default=0)
-    ap.add_argument("--run_tag", default=None, help="Optional tag for multi-process benchmarks")
+    ap.add_argument("--num_shards", type=int)
+    ap.add_argument("--shard_idx", type=int)
+    ap.add_argument("--run_tag", help="Optional tag for multi-process benchmarks")
 
     ap.add_argument("--structured_output", action="store_true")
     ap.add_argument("--disable_thinking", action="store_true")
-    ap.add_argument(
-        "--chat_template_kwargs", default=None, help="JSON dict of chat template kwargs"
-    )
+    ap.add_argument("--chat_template_kwargs", help="JSON dict of chat template kwargs")
 
     ap.add_argument(
         "--json_out",
-        default=None,
         help="Write metrics to JSON file (defaults to benchmarks/bench_*.json)",
     )
 
@@ -144,6 +163,9 @@ def _count_output_tokens(tokenizer, out) -> int:
 
 def main() -> None:
     args = parse_args()
+    print_header("Open-Patients Benchmark")
+    if args.config:
+        print(f"Config: {colored(args.config, 'CYAN')}")
     if not args.model:
         raise SystemExit("Missing --model (or model.name in --config).")
 
@@ -201,7 +223,7 @@ def main() -> None:
     if args.disable_thinking:
         chat_template_kwargs["enable_thinking"] = False
     force_plain = args.prompt_mode == "plain"
-    system_prompt = build_system_prompt(schema_bundle, style=args.prompt_style)
+    system_prompt = build_system_prompt(schema_bundle)
     keys_str = json.dumps(schema_bundle.schema_keys, ensure_ascii=False)
 
     ds = load_dataset(args.dataset, split=args.split, streaming=True)
@@ -223,8 +245,7 @@ def main() -> None:
             return
         prompts = []
         for note in buf_notes:
-            note2 = truncate_note(note, args.max_input_chars)
-            user = USER_TEMPLATE.format(note=note2, keys=keys_str)
+            user = USER_TEMPLATE.format(note=note, keys=keys_str)
             prompt = make_chat_prompt(
                 tokenizer,
                 system_prompt,
@@ -284,7 +305,6 @@ def main() -> None:
         "max_notes": args.max_notes,
         "batch_size": args.batch_size,
         "max_new_tokens": args.max_new_tokens,
-        "prompt_style": args.prompt_style,
         "prompt_mode": args.prompt_mode,
         "structured_output": bool(args.structured_output),
         "num_shards": args.num_shards,
@@ -306,12 +326,12 @@ def main() -> None:
         "avg_output_toks_per_note": _safe_div(output_tokens, n_total),
     }
 
-    print("\nBenchmark results")
+    print("\n" + colored("Benchmark results", "CYAN"))
     for k, v in metrics.items():
         if isinstance(v, float):
-            print(f"  {k}: {v:.3f}")
+            print(f"  {colored(k, 'WHITE')}: {colored(f'{v:.3f}', 'GREEN')}")
         else:
-            print(f"  {k}: {v}")
+            print(f"  {colored(k, 'WHITE')}: {colored(str(v), 'GREEN')}")
 
     if args.json_out:
         out_path = Path(args.json_out)
@@ -319,7 +339,7 @@ def main() -> None:
             out_path = Path("benchmarks") / out_path
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-        print(f"\nWrote metrics to: {out_path}")
+        print(f"\n{colored('Wrote metrics to:', 'CYAN')} {colored(str(out_path), 'CYAN')}")
 
 
 if __name__ == "__main__":

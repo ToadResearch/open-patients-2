@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List
 
 from ..core.config import load_run_config
+from ..utils.utils import colored, print_header
 
 
 def _split_csv(val: str) -> List[str]:
@@ -46,6 +47,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    print_header("Open-Patients Replicas")
     cfg = load_run_config(args.config)
     parallel = cfg.get("parallel") or {}
     replicas = args.replicas or parallel.get("replicas") or 1
@@ -131,7 +133,12 @@ def main() -> None:
         if run_id:
             cmd += ["--run_id", run_id]
 
-        print(f"[launch] shard {i}/{replicas - 1} on GPU {gpus[i]}: {' '.join(cmd)}")
+        print(
+            colored(
+                f"[launch] shard {i}/{replicas - 1} on GPU {gpus[i]}: {' '.join(cmd)}",
+                "CYAN",
+            )
+        )
         if args.dry_run:
             continue
         procs.append(subprocess.Popen(cmd, cwd=root, env=env))

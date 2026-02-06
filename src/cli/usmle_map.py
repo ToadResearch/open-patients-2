@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from ..utils.utils import colored, print_header
+
 def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[str]]:
     ap = argparse.ArgumentParser(description="Generate USMLE mapping file if missing.")
     ap.add_argument(
@@ -24,10 +26,14 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[
 def main(argv: list[str] | None = None) -> None:
     # Parse only our args, pass the rest through to the mapping tool.
     args, rest = parse_args(argv)
+    print_header("USMLE Mapping")
 
     output_path = Path(args.output)
     if output_path.exists() and output_path.stat().st_size > 0 and not args.force:
-        print(f"Skipping: {output_path} already exists.")
+        print(
+            f"{colored('Skipping:', 'YELLOW')} {colored(str(output_path), 'CYAN')} "
+            "already exists."
+        )
         return
 
     from ..utils import usmle_mappings
