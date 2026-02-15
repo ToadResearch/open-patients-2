@@ -9,6 +9,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -22,6 +23,21 @@ from ..utils.utils import colored, print_header
 
 def _split_csv(val: str) -> List[str]:
     return [x.strip() for x in val.split(",") if x.strip()]
+
+
+def _combine_all_jsonl_shards(shards_dir: Path, out_path: Path) -> int:
+    """Concatenate all *.jsonl files in shards_dir into out_path. Returns shard count."""
+    shard_paths = sorted(shards_dir.glob("*.jsonl"))
+    if not shard_paths:
+        return 0
+
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    with tmp_path.open("wb") as out_f:
+        for p in shard_paths:
+            with p.open("rb") as in_f:
+                shutil.copyfileobj(in_f, out_f)
+    tmp_path.replace(out_path)
+    return len(shard_paths)
 
 
 def parse_args() -> argparse.Namespace:
@@ -154,63 +170,74 @@ def main() -> None:
     if exit_code != 0:
         raise SystemExit(exit_code)
 
-    if run_dir is not None:
-        replica_meta = []
-        for i in range(replicas):
-            path = run_dir / f"run_metadata_r{i}.json"
-            if path.exists():
-                try:
-                    replica_meta.append(json.loads(path.read_text(encoding="utf-8")))
-                except Exception:
-                    pass
+    # Workers write into either a run subfolder (when run_id is used / resume=false) or directly into base_out_dir.
+    out_root = run_dir if run_dir is not None else base_out_dir
 
-        if replica_meta:
-            def _parse_iso(ts: str) -> dt.datetime:
-                return dt.datetime.fromisoformat(ts)
+    # Aggregate replica metadata into out_root/run_metadata.json.
+    replica_meta = []
+    for i in range(replicas):
+        path = out_root / f"run_metadata_r{i}.json"
+        if path.exists():
+            try:
+                replica_meta.append(json.loads(path.read_text(encoding="utf-8")))
+            except Exception:
+                pass
 
-            starts = [m.get("start_time") for m in replica_meta if m.get("start_time")]
-            ends = [m.get("end_time") for m in replica_meta if m.get("end_time")]
-            start_dt = min((_parse_iso(s) for s in starts), default=None)
-            end_dt = max((_parse_iso(s) for s in ends), default=None)
-            wall_time = (end_dt - start_dt).total_seconds() if start_dt and end_dt else None
+    if replica_meta:
+        def _parse_iso(ts: str) -> dt.datetime:
+            return dt.datetime.fromisoformat(ts)
 
-            sum_notes = sum(m.get("notes_written", 0) for m in replica_meta)
-            sum_input = sum(m.get("input_tokens", 0) for m in replica_meta)
-            sum_output = sum(m.get("output_tokens", 0) for m in replica_meta)
-            sum_total = sum_input + sum_output
-            sum_gen = sum(m.get("gen_time_s", 0.0) for m in replica_meta)
+        starts = [m.get("start_time") for m in replica_meta if m.get("start_time")]
+        ends = [m.get("end_time") for m in replica_meta if m.get("end_time")]
+        start_dt = min((_parse_iso(s) for s in starts), default=None)
+        end_dt = max((_parse_iso(s) for s in ends), default=None)
+        wall_time = (end_dt - start_dt).total_seconds() if start_dt and end_dt else None
 
-            def _safe_div(num: float, den: float | None) -> float:
-                return num / den if den else 0.0
+        sum_notes = sum(m.get("notes_written", 0) for m in replica_meta)
+        sum_input = sum(m.get("input_tokens", 0) for m in replica_meta)
+        sum_output = sum(m.get("output_tokens", 0) for m in replica_meta)
+        sum_total = sum_input + sum_output
+        sum_gen = sum(m.get("gen_time_s", 0.0) for m in replica_meta)
 
-            aggregate = {
-                "run_id": run_id,
-                "base_out_dir": str(base_out_dir),
-                "out_dir": str(run_dir),
-                "replicas": replicas,
-                "resume": bool(resume),
-                "config_path": args.config,
-                "config": cfg,
-                "start_time": start_dt.isoformat() if start_dt else None,
-                "end_time": end_dt.isoformat() if end_dt else None,
-                "wall_time_s": wall_time,
-                "gen_time_s": sum_gen,
-                "notes_written": sum_notes,
-                "input_tokens": sum_input,
-                "output_tokens": sum_output,
-                "total_tokens": sum_total,
-                "notes_per_s": _safe_div(sum_notes, wall_time),
-                "total_toks_per_s": _safe_div(sum_total, wall_time),
-                "input_toks_per_s": _safe_div(sum_input, sum_gen),
-                "output_toks_per_s": _safe_div(sum_output, sum_gen),
-                "replica_metadata_files": [
-                    str(run_dir / f"run_metadata_r{i}.json") for i in range(replicas)
-                ],
-            }
-            (run_dir / "run_metadata.json").write_text(
-                json.dumps(aggregate, indent=2),
-                encoding="utf-8",
-            )
+        def _safe_div(num: float, den: float | None) -> float:
+            return num / den if den else 0.0
+
+        aggregate = {
+            "run_id": run_id,
+            "base_out_dir": str(base_out_dir),
+            "out_dir": str(out_root),
+            "replicas": replicas,
+            "resume": bool(resume),
+            "config_path": args.config,
+            "config": cfg,
+            "start_time": start_dt.isoformat() if start_dt else None,
+            "end_time": end_dt.isoformat() if end_dt else None,
+            "wall_time_s": wall_time,
+            "gen_time_s": sum_gen,
+            "notes_written": sum_notes,
+            "input_tokens": sum_input,
+            "output_tokens": sum_output,
+            "total_tokens": sum_total,
+            "notes_per_s": _safe_div(sum_notes, wall_time),
+            "total_toks_per_s": _safe_div(sum_total, wall_time),
+            "input_toks_per_s": _safe_div(sum_input, sum_gen),
+            "output_toks_per_s": _safe_div(sum_output, sum_gen),
+            "replica_metadata_files": [
+                str(out_root / f"run_metadata_r{i}.json") for i in range(replicas)
+            ],
+        }
+        (out_root / "run_metadata.json").write_text(
+            json.dumps(aggregate, indent=2),
+            encoding="utf-8",
+        )
+
+    # Combine shards into a single out_root/data.jsonl for convenience.
+    shards_dir = out_root / "shards"
+    if shards_dir.exists():
+        combined_path = out_root / "data.jsonl"
+        n_shards = _combine_all_jsonl_shards(shards_dir, combined_path)
+        if n_shards:
+            print(colored(f"[combine] wrote {combined_path} from {n_shards} shard(s)", "CYAN"))
 
 
 if __name__ == "__main__":

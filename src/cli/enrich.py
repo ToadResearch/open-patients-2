@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -63,6 +64,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "resume": False,
         "structured_output": False,
         "disable_thinking": False,
+        "combine_shards": True,
         "num_shards": 1,
         "shard_idx": 0,
     }
@@ -164,6 +166,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument(
         "--disable_thinking", action="store_true", help="Disable Qwen3-style <think> output"
     )
+    ap.add_argument(
+        "--no_combine_shards",
+        dest="combine_shards",
+        action="store_false",
+        help="Do not concatenate shard files into a final data.jsonl at end of run.",
+    )
 
     # Manual dataset sharding across processes (CPU-side); useful for 2× replica mode
     ap.add_argument("--num_shards", type=int)
@@ -171,6 +179,28 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
     ap.set_defaults(**defaults)
     return ap.parse_args(remaining)
+
+
+def _combine_jsonl_shards(shards_dir: Path, shard_prefix: str, out_path: Path) -> int:
+    """
+    Concatenate shard files from shards_dir into out_path.
+
+    Returns the number of shard files combined.
+    """
+    # Shards are always "{prefix}_{00000..}.jsonl" (exactly 5 digits).
+    # Use a strict glob so "data_shard" doesn't accidentally match "data_shard_r0_*".
+    pattern = f"{shard_prefix}_[0-9][0-9][0-9][0-9][0-9].jsonl"
+    shard_paths = sorted(shards_dir.glob(pattern))
+    if not shard_paths:
+        return 0
+
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    with tmp_path.open("wb") as out_f:
+        for p in shard_paths:
+            with p.open("rb") as in_f:
+                shutil.copyfileobj(in_f, out_f)
+    tmp_path.replace(out_path)
+    return len(shard_paths)
 
 
 def main() -> None:
@@ -278,8 +308,17 @@ def main() -> None:
     sampling = build_sampling(sampling_cfg, args.structured_output, json_schema)
 
     shard_prefix = f"data_shard_{args.run_tag}" if args.run_tag else "data_shard"
+    shards_dir = out_dir / "shards"
+    # One-time layout migration: move legacy shard files from out_dir/ to out_dir/shards/.
+    legacy_shards = sorted(out_dir.glob("data_shard*.jsonl"))
+    if legacy_shards:
+        shards_dir.mkdir(parents=True, exist_ok=True)
+        for p in legacy_shards:
+            dest = shards_dir / p.name
+            if not dest.exists():
+                p.replace(dest)
     writer = JSONLShardedWriter(
-        out_dir=out_dir,
+        out_dir=shards_dir,
         shard_size=args.shard_size,
         name_prefix=shard_prefix,
     )
@@ -454,6 +493,13 @@ def main() -> None:
     processed_writer.close()
     pbar.close()
 
+    combined_path: Path | None = None
+    combined_shards = 0
+    # Only combine for single-process runs; multi-process (run_tag/num_shards) should be combined by the launcher.
+    if args.combine_shards and (args.run_tag is None) and (args.num_shards == 1):
+        combined_path = out_dir / "data.jsonl"
+        combined_shards = _combine_jsonl_shards(shards_dir, shard_prefix, combined_path)
+
     end_iso = now_iso()
     total_time = time.perf_counter() - start_perf
 
@@ -466,6 +512,9 @@ def main() -> None:
         "run_tag": args.run_tag,
         "base_out_dir": str(base_out_dir),
         "out_dir": str(out_dir),
+        "shards_dir": str(shards_dir),
+        "combined_jsonl": str(combined_path) if combined_path else None,
+        "combined_shards": combined_shards,
         "resume": bool(args.resume),
         "config_path": args.config,
         "config": run_config,
@@ -500,6 +549,9 @@ def main() -> None:
     failed_color = "RED" if n_failed else "GREEN"
     print(f"  failed:  {colored(str(n_failed), failed_color)}")
     print(f"  out_dir: {colored(str(out_dir.resolve()), 'CYAN')}")
+    print(f"  shards:  {colored(str(shards_dir.resolve()), 'CYAN')}")
+    if combined_path:
+        print(f"  data:    {colored(str(combined_path.resolve()), 'CYAN')}")
     if out_dir != base_out_dir:
         print(f"  base:    {colored(str(base_out_dir.resolve()), 'CYAN')}")
     print(f"  meta:    {colored(str(metadata_path.resolve()), 'CYAN')}")

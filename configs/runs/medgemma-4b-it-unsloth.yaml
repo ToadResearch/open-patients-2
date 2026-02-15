@@ -1,7 +1,7 @@
 run:
   dataset: ncbi/Open-Patients
   split: train
-  out_dir: ./open_patients_enriched_medgemma4b_unsloth
+  out_dir: ./open_patients_medgemma4b_unsloth
   resume: true
   max_notes: 0
   shard_size: 50000
