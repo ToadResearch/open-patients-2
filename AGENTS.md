@@ -32,7 +32,7 @@ Outputs are written as sharded JSONL under `out_dir/shards/` and (by default) a 
 2. Resolve `out_dir`:
    - absolute path: unchanged
    - relative path not starting with `outputs/`: auto-prefixed with `outputs/`
-   - recommended convention: `./open_patients_<model_slug>` (e.g., `./open_patients_medgemma4b_unsloth`)
+   - recommended convention: `./open_patients_<model_slug>` (e.g., `./open_patients_medgemma1_5_4b_unsloth`)
 3. Create run directory when `--resume` is false (auto `run_YYYYmmdd_HHMMSS_xxxxxx` unless `--run_id` provided).
 4. Load schema bundle from `configs/schemas/schema.json` (or `--schema`).
 5. Build system prompt from schema and render per-note prompt via tokenizer chat template (or plain mode).
@@ -59,13 +59,16 @@ Outputs are written as sharded JSONL under `out_dir/shards/` and (by default) a 
 - Generate mapping if needed:
   - `uv run open-patients-usmle-map`
 - Run worker:
-  - `uv run open-patients-worker --config configs/runs/medgemma-27b-text-it.yaml`
+  - `uv run open-patients-worker --config configs/runs/medgemma-27b-text-it-unsloth.yaml`
 - Run multi-GPU replicas:
-  - `uv run open-patients-replicas --config configs/runs/medgemma-27b-text-it.yaml --gpus 0,1,2,3`
+  - `uv run open-patients-replicas --config configs/runs/medgemma-27b-text-it-unsloth.yaml --gpus 0,1,2,3`
 - Prompt inspection:
-  - `uv run open-patients-check-prompt --config configs/runs/medgemma-27b-text-it.yaml --seed 1`
+  - `uv run open-patients-check-prompt --config configs/runs/medgemma-27b-text-it-unsloth.yaml --seed 1`
 - Bench:
-  - `uv run open-patients-bench --config configs/runs/medgemma-27b-text-it.yaml`
+  - `uv run open-patients-bench --config configs/runs/medgemma-27b-text-it-unsloth.yaml`
+- Sweep (single GPU):
+  - `.venv/bin/python scripts/sweep_single_h100.py --config configs/runs/medgemma-1.5-4b-it-unsloth.yaml --max_notes 256 --stage2_max_notes 256 --batch_sizes 16,32,64,96,128,256`
+  - `.venv/bin/python scripts/sweep_single_h100.py --config configs/runs/medgemma-27b-text-it-unsloth.yaml --max_notes 256 --stage2_max_notes 256 --max_new_tokens 256 --stage1_batch_size 128 --stage1_max_num_seqs 128,256 --stage1_max_num_batched_tokens 8192,16384,32768 --stage1_chunked_prefill 1 --batch_sizes 32,64,96,128,256`
 - Tests:
   - `uv run open-patients-test`
 

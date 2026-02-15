@@ -30,30 +30,31 @@ This will skip if `configs/usmle_mapping.json` is already present.
 
 ```bash
 uv run open-patients-worker \
-	--config configs/runs/medgemma-27b-text-it.yaml
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
 Relative `out_dir` values are automatically placed under `outputs/`.
 
 When `--resume` is not set, outputs are written to a new run subfolder under `out_dir`
 (e.g., `outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx`).
+(If you use the Unsloth profile, this will be `outputs/open_patients_medgemma27b_unsloth/...`.)
 
 4. (Optional) Launch multi-GPU replica runs:
 
 ```bash
 uv run open-patients-replicas \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--gpus 0,1,2,3,4,5,6,7
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
+		--gpus 0,1,2,3,4,5,6,7
 ```
 
 5. Push the enriched dataset to Hugging Face Hub:
 
 ```bash
 uv run open-patients-push \
-	--data_dir outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx \
-	--repo_name open-patients-enriched-medgemma27b \
-	--org your-organization \
-	--private
+		--data_dir outputs/open_patients_medgemma27b_unsloth/run_YYYYmmdd_HHMMSS_xxxxxx \
+		--repo_name open-patients-medgemma27b-unsloth \
+		--org your-organization \
+		--private
 ```
 
 **Hugging Face token:** Required for pushing. You can either:
@@ -75,15 +76,15 @@ Run a quick throughput benchmark (defaults to 500 notes):
 
 ```bash
 uv run open-patients-bench \
-	--config configs/runs/medgemma-27b-text-it.yaml
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
 Run a multi-GPU replica benchmark (one process per GPU):
 
 ```bash
 uv run open-patients-bench-replicas \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--gpus 0,1,2,3
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
+		--gpus 0,1,2,3
 ```
 
 Note: `--max_notes` applies per replica in the multi-process benchmark.
@@ -96,9 +97,9 @@ Override the note count or choose a custom metrics path:
 
 ```bash
 uv run open-patients-bench \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--max_notes 500 \
-	--json_out benchmarks/bench_metrics.json
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
+		--max_notes 500 \
+		--json_out benchmarks/bench_metrics.json
 ```
 
 ## Run Details
@@ -234,7 +235,7 @@ You can also use the launcher (reads `parallel.replicas` from the run profile):
 
 ```bash
 uv run open-patients-replicas \
-	--config configs/runs/medgemma-27b-text-it.yaml
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
 ### Output files

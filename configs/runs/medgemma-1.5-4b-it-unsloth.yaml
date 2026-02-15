@@ -1,5 +1,4 @@
 run:
-  # Backwards-compatible alias for configs/runs/medgemma-1.5-4b-it-unsloth.yaml
   dataset: ncbi/Open-Patients
   split: train
   out_dir: ./open_patients_medgemma1_5_4b_unsloth
@@ -12,7 +11,6 @@ run:
   usmle_mapping: configs/usmle_mapping.json
 
 model:
-  # Use the newer MedGemma 1.5 4B Instruct checkpoint (Unsloth).
   name: unsloth/medgemma-1.5-4b-it
   prompt_mode: chat
 
