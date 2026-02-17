@@ -5,7 +5,7 @@
 run:
   dataset: ncbi/Open-Patients
   split: train
-  out_dir: ./open_patients_enriched_baichuan_m3
+  out_dir: ./open_patients_baichuan_m3
   processed_ids: processed_ids.txt
   schema: configs/schemas/schema.json
   usmle_mapping: configs/usmle_mapping.json

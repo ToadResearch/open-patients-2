@@ -5,6 +5,7 @@ JSONL sharded writer and resume tracking utilities.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Optional, List
 
@@ -22,10 +23,25 @@ class JSONLShardedWriter:
         self.shard_size = shard_size
         self.name_prefix = name_prefix
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self.shard_idx = 0
+        # If shards already exist (resume/re-run), start a new shard after the last index.
+        # We intentionally do not append to prior shards to avoid mixing shard sizes/order.
+        self.shard_idx = self._next_shard_idx()
         self.count_in_shard = 0
         self.f = None
         self._open_new()
+
+    def _next_shard_idx(self) -> int:
+        pat = re.compile(rf"^{re.escape(self.name_prefix)}_(\d{{5}})\.jsonl$")
+        max_idx = -1
+        for p in self.out_dir.glob(f"{self.name_prefix}_*.jsonl"):
+            m = pat.match(p.name)
+            if not m:
+                continue
+            try:
+                max_idx = max(max_idx, int(m.group(1)))
+            except Exception:
+                continue
+        return max_idx + 1
 
     def _open_new(self) -> None:
         if self.f:

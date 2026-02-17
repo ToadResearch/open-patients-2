@@ -4,7 +4,7 @@ Push the enriched Open-Patients dataset to Hugging Face Hub.
 
 Example:
   uv run python src/push_to_hf.py \
-    --data_dir ./open_patients_enriched \
+    --data_dir outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx \
     --repo_name open-patients-enriched \
     --org my-organization \
     --private
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--data_dir",
         required=True,
-        help="Directory containing the enriched JSONL shards (e.g., ./open_patients_enriched)",
+        help="Output directory containing data.jsonl (or shards/*.jsonl) from an enrichment run",
     )
     ap.add_argument(
         "--repo_name",
@@ -75,10 +75,20 @@ def main() -> None:
     if not data_dir.exists():
         raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
-    # Find all JSONL files
-    jsonl_files = list(data_dir.glob("*.jsonl"))
+    # Prefer a single combined file if present; otherwise fall back to shard files.
+    combined = data_dir / "data.jsonl"
+    if combined.exists():
+        jsonl_files = [combined]
+    else:
+        shards_dir = data_dir / "shards"
+        if shards_dir.exists():
+            jsonl_files = sorted(shards_dir.glob("*.jsonl"))
+        else:
+            jsonl_files = sorted(data_dir.glob("*.jsonl"))
     if not jsonl_files:
-        raise FileNotFoundError(f"No JSONL files found in {data_dir}")
+        raise FileNotFoundError(
+            f"No JSONL files found in {data_dir} (expected data.jsonl or shards/*.jsonl)."
+        )
 
     print(
         f"Found {colored(str(len(jsonl_files)), 'GREEN')} JSONL file(s) in "
@@ -89,7 +99,7 @@ def main() -> None:
     print(colored("Loading dataset...", "CYAN"))
     ds = load_dataset(
         "json",
-        data_files=str(data_dir / "*.jsonl"),
+        data_files=[str(p) for p in jsonl_files],
         split="train",
     )
     print(

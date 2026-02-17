@@ -927,7 +927,6 @@
             ]
             },
             "default": [],
-            "uniqueItems": true,
             "examples": [["cardiology", "internal_medicine", "radiation_oncology"]]
         },
 
@@ -1034,7 +1033,6 @@
             ]
             },
             "default": [],
-            "uniqueItems": true,
             "examples": [["medical_oncology", "transplant_hepatology", "hospice_and_palliative_medicine"]]
         }
 

@@ -30,30 +30,31 @@ This will skip if `configs/usmle_mapping.json` is already present.
 
 ```bash
 uv run open-patients-worker \
-	--config configs/runs/medgemma-27b-text-it.yaml
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
 Relative `out_dir` values are automatically placed under `outputs/`.
 
 When `--resume` is not set, outputs are written to a new run subfolder under `out_dir`
-(e.g., `outputs/open_patients_enriched_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx`).
+(e.g., `outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx`).
+(If you use the Unsloth profile, this will be `outputs/open_patients_medgemma27b_unsloth/...`.)
 
 4. (Optional) Launch multi-GPU replica runs:
 
 ```bash
 uv run open-patients-replicas \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--gpus 0,1,2,3,4,5,6,7
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
+		--gpus 0,1,2,3,4,5,6,7
 ```
 
 5. Push the enriched dataset to Hugging Face Hub:
 
 ```bash
 uv run open-patients-push \
-	--data_dir outputs/open_patients_enriched_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx \
-	--repo_name open-patients-enriched-medgemma27b \
-	--org your-organization \
-	--private
+		--data_dir outputs/open_patients_medgemma27b_unsloth/run_YYYYmmdd_HHMMSS_xxxxxx \
+		--repo_name open-patients-medgemma27b-unsloth \
+		--org your-organization \
+		--private
 ```
 
 **Hugging Face token:** Required for pushing. You can either:
@@ -75,7 +76,7 @@ Run a quick throughput benchmark (defaults to 500 notes):
 
 ```bash
 uv run open-patients-bench \
-	--config configs/runs/medgemma-27b-text-it.yaml
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
 Measure full-dataset prompt length distribution (real rendered prompts with note text):
@@ -100,8 +101,8 @@ Run a multi-GPU replica benchmark (one process per GPU):
 
 ```bash
 uv run open-patients-bench-replicas \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--gpus 0,1,2,3
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
+		--gpus 0,1,2,3
 ```
 
 Note: `--max_notes` applies per replica in the multi-process benchmark.
@@ -114,9 +115,9 @@ Override the note count or choose a custom metrics path:
 
 ```bash
 uv run open-patients-bench \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--max_notes 500 \
-	--json_out benchmarks/bench_metrics.json
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
+		--max_notes 500 \
+		--json_out benchmarks/bench_metrics.json
 ```
 
 ## Run Details
@@ -238,7 +239,7 @@ Example: 4 local workers:
 for i in 0 1 2 3; do
 	uv run open-patients-worker \
 		--model gpt-oss-20b \
-		--out_dir outputs/open_patients_enriched \
+		--out_dir outputs/open_patients_gpt_oss_20b \
 		--batch_size 32 \
 		--structured_output \
 		--resume \
@@ -256,25 +257,29 @@ You can also use the launcher (reads `parallel.replicas` from the run profile):
 
 ```bash
 uv run open-patients-replicas \
-	--config configs/runs/medgemma-27b-text-it.yaml
+		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
 ### Output files
 
 Inside `--out_dir` (or the run subfolder when `--resume` is not set):
 
-- `data_shard_00000.jsonl`, `data_shard_00001.jsonl`, ...
+- `shards/data_shard_00000.jsonl`, `shards/data_shard_00001.jsonl`, ...
 	Enriched dataset shards.
+- `data.jsonl`
+	Concatenation of all shard files (single-process runs). For replica runs this is written by
+	`open-patients-replicas` after all workers finish.
 - `processed_ids.txt`
 	One input `_id` per line; used by `--resume`.
 - `run_metadata.json`
 	Run metadata (runtime, tokens/sec, config, and counters).
 
 For multi-process runs (with `open-patients-replicas` or manual `--run_tag`):
-- `data_shard_r0_00000.jsonl`, `data_shard_r1_00000.jsonl`, ...
+- `shards/data_shard_r0_00000.jsonl`, `shards/data_shard_r1_00000.jsonl`, ...
 - `processed_ids_r0.txt`, `processed_ids_r1.txt`, ...
 - `run_metadata_r0.json`, `run_metadata_r1.json`, ...
 - `run_metadata.json` (aggregated across replicas; written by `open-patients-replicas`).
+- `data.jsonl` (combined across replicas; written by `open-patients-replicas`).
 
 ### View output records
 
@@ -296,7 +301,7 @@ from datasets import load_dataset
 
 ds = load_dataset(
 		"json",
-    data_files="outputs/open_patients_enriched_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx/*.jsonl",
+    data_files="outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx/data.jsonl",
 		split="train",
 )
 
@@ -307,7 +312,7 @@ print(ds[0])
 Convert to Parquet for fast filtering:
 
 ```python
-ds.to_parquet("outputs/open_patients_enriched_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx.parquet")
+ds.to_parquet("outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx.parquet")
 ```
 
 ## Pushing to Hugging Face Hub
