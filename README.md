@@ -78,6 +78,24 @@ uv run open-patients-bench \
 	--config configs/runs/medgemma-27b-text-it.yaml
 ```
 
+Measure full-dataset prompt length distribution (real rendered prompts with note text):
+
+```bash
+uv run open-patients-prompt-stats \
+	--config configs/runs/medgemma-27b-text-it.yaml \
+	--tokenizer Qwen/Qwen3.5-397B-A17B
+```
+
+Parallel full-dataset prompt stats with exact aggregate p50/p95:
+
+```bash
+uv run open-patients-prompt-stats-replicas \
+	--config configs/runs/medgemma-27b-text-it.yaml \
+	--tokenizer Qwen/Qwen3.5-397B-A17B \
+	--workers 8 \
+	--json_out benchmarks/prompts/prompt_stats_qwen3_5_397b_a17b.json
+```
+
 Run a multi-GPU replica benchmark (one process per GPU):
 
 ```bash
@@ -113,6 +131,7 @@ Command naming:
 - `open-patients-bench` runs a single-process throughput benchmark.
 - `open-patients-bench-replicas` launches multi-process benchmarks across GPUs and writes
   a `bench_metadata.json` aggregate.
+- `open-patients-view` starts a lightweight web viewer for `data_shard*.jsonl` files.
 
 ---
 
@@ -180,6 +199,9 @@ Load a run profile YAML (see `configs/runs/*.yaml`). CLI flags override values f
 
 `--structured_output`
 **Recommended.** Uses vLLM's structured output feature with JSON schema constrained decoding (via xgrammar/guidance backends). This guarantees the output conforms to the schema defined in `configs/schemas/schema.json`, eliminating JSON parsing errors.
+
+`--schema_in_prompt`
+Embeds the full JSON schema wrapper directly into the system prompt and disables `--structured_output` for that run. Useful when you want unconstrained decoding but still want the model to see the full schema text.
 
 `--schema`
 Path to the JSON schema wrapper (default: `configs/schemas/schema.json`).
@@ -253,6 +275,18 @@ For multi-process runs (with `open-patients-replicas` or manual `--run_tag`):
 - `processed_ids_r0.txt`, `processed_ids_r1.txt`, ...
 - `run_metadata_r0.json`, `run_metadata_r1.json`, ...
 - `run_metadata.json` (aggregated across replicas; written by `open-patients-replicas`).
+
+### View output records
+
+```bash
+uv run open-patients-view \
+	--model open_patients_medgemma4b_unsloth \
+	--open-browser
+```
+
+With no args, the viewer opens to the latest available run in `outputs/`.
+Pass `--model` to open the latest run for that model.
+Use the UI to switch between models and runs.
 
 
 ## Loading the output with Hugging Face Datasets

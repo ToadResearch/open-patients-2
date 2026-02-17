@@ -22,6 +22,9 @@ vllm:
   data_parallel_size: 2
 sampling:
   max_new_tokens: 50
+  structured_output: true
+prompt:
+  schema_in_prompt: true
 """.strip(),
                 encoding="utf-8",
             )
@@ -44,6 +47,8 @@ sampling:
             self.assertEqual(args.data_parallel_size, 1)
             self.assertEqual(args.max_new_tokens, 99)
             self.assertEqual(args.out_dir, "./from_cli")
+            self.assertTrue(args.structured_output)
+            self.assertTrue(args.schema_in_prompt)
 
     def test_bench_cli_overrides_and_benchmark_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

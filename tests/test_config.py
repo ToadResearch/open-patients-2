@@ -10,13 +10,17 @@ class ConfigTests(unittest.TestCase):
         cfg = {
             "run": {"dataset": "ncbi/Open-Patients", "structured_output": True},
             "generation": {"temperature": 0.1},
-            "prompt": {"chat_template_kwargs": {"thinking_mode": "off"}},
+            "prompt": {
+                "chat_template_kwargs": {"thinking_mode": "off"},
+                "schema_in_prompt": True,
+            },
         }
         defaults = config_to_defaults(cfg)
         self.assertEqual(defaults["dataset"], "ncbi/Open-Patients")
         self.assertEqual(defaults["temperature"], 0.1)
         self.assertTrue(defaults["structured_output"])
         self.assertEqual(defaults["chat_template_kwargs"], {"thinking_mode": "off"})
+        self.assertTrue(defaults["schema_in_prompt"])
 
     def test_load_run_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

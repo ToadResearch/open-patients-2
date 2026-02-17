@@ -15,6 +15,15 @@ class PromptTests(unittest.TestCase):
         # Enums should be included in the prompt.
         self.assertIn("aerospace_medicine", prompt)
 
+    def test_prompt_can_embed_full_schema_wrapper(self) -> None:
+        schema_path = Path("configs/schemas/schema.json")
+        bundle = load_schema(schema_path)
+
+        prompt = build_system_prompt(bundle, include_json_schema=True)
+
+        self.assertIn("JSON schema wrapper (authoritative):", prompt)
+        self.assertIn('"type": "json_schema"', prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

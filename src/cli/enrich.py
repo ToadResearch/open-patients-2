@@ -62,6 +62,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "shard_size": 50_000,
         "resume": False,
         "structured_output": False,
+        "schema_in_prompt": False,
         "disable_thinking": False,
         "num_shards": 1,
         "shard_idx": 0,
@@ -161,6 +162,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument("--resume", action="store_true", help="Skip IDs already in processed_ids file")
 
     ap.add_argument("--structured_output", action="store_true", help="Use vLLM structured output")
+    ap.add_argument(
+        "--schema_in_prompt",
+        action="store_true",
+        help="Embed full JSON schema in the prompt and disable vLLM structured output",
+    )
     ap.add_argument(
         "--disable_thinking", action="store_true", help="Disable Qwen3-style <think> output"
     )
@@ -268,14 +274,25 @@ def main() -> None:
     )
     llm, tokenizer = build_llm(args.model, vllm_cfg)
 
-    json_schema = schema_bundle.wrapper if args.structured_output else None
+    use_structured_output = bool(args.structured_output)
+    if args.schema_in_prompt:
+        if use_structured_output:
+            print(
+                colored(
+                    "[info] --schema_in_prompt enabled; disabling --structured_output.",
+                    "YELLOW",
+                )
+            )
+        use_structured_output = False
+
+    json_schema = schema_bundle.wrapper if use_structured_output else None
     sampling_cfg = dict(
         temperature=args.temperature,
         top_p=args.top_p,
         max_new_tokens=args.max_new_tokens,
         seed=args.seed if args.seed != 0 else None,
     )
-    sampling = build_sampling(sampling_cfg, args.structured_output, json_schema)
+    sampling = build_sampling(sampling_cfg, use_structured_output, json_schema)
 
     shard_prefix = f"data_shard_{args.run_tag}" if args.run_tag else "data_shard"
     writer = JSONLShardedWriter(
@@ -298,7 +315,10 @@ def main() -> None:
         # Qwen3-style tokenizers commonly support enable_thinking=False
         chat_template_kwargs["enable_thinking"] = False
     force_plain = args.prompt_mode == "plain"
-    system_prompt = build_system_prompt(schema_bundle)
+    system_prompt = build_system_prompt(
+        schema_bundle,
+        include_json_schema=bool(args.schema_in_prompt),
+    )
 
     buf_ids: List[str] = []
     buf_notes: List[str] = []
@@ -366,7 +386,7 @@ def main() -> None:
             output_tokens += _count_output_tokens(out)
 
             parsed: Optional[dict]
-            if args.structured_output:
+            if use_structured_output:
                 # Usually already JSON; try fast path first.
                 try:
                     parsed = json.loads(text)
@@ -478,6 +498,8 @@ def main() -> None:
         "notes_written": n_written,
         "notes_skipped": n_skipped,
         "notes_failed": n_failed,
+        "structured_output": bool(use_structured_output),
+        "schema_in_prompt": bool(args.schema_in_prompt),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,

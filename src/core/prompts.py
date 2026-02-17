@@ -6,6 +6,8 @@ Prompts are generated dynamically from schema.json (JSON Schema format).
 
 from __future__ import annotations
 
+import json
+
 from .schema_loader import SchemaBundle
 
 
@@ -58,9 +60,9 @@ def _build_field_rules(schema: SchemaBundle) -> str:
     return "\n".join(lines)
 
 
-def build_system_prompt(schema: SchemaBundle) -> str:
+def build_system_prompt(schema: SchemaBundle, include_json_schema: bool = False) -> str:
     """Build the system prompt."""
-    return f"""You extract structured fields from a clinical note.
+    prompt = f"""You extract structured fields from a clinical note.
 
 Return ONE valid JSON object and NOTHING ELSE.
 
@@ -72,6 +74,17 @@ Rules:
 - Limit each list to at most 30 items (choose the most clinically relevant).
 {_build_field_rules(schema)}
 """
+    if not include_json_schema:
+        return prompt
+
+    schema_wrapper = json.dumps(schema.wrapper, ensure_ascii=False, indent=2)
+    return (
+        f"{prompt}\n"
+        "JSON schema wrapper (authoritative):\n"
+        "```json\n"
+        f"{schema_wrapper}\n"
+        "```"
+    )
 
 
 USER_TEMPLATE = """Extract the fields from this clinical note.

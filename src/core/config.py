@@ -86,5 +86,6 @@ def config_to_defaults(cfg: Dict[str, Any]) -> Dict[str, Any]:
     # prompt section
     _maybe_set(defaults, "disable_thinking", prompt.get("disable_thinking"))
     _maybe_set(defaults, "chat_template_kwargs", prompt.get("chat_template_kwargs"))
+    _maybe_set(defaults, "schema_in_prompt", prompt.get("schema_in_prompt"))
 
     return defaults

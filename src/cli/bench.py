@@ -65,6 +65,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "quantization": None,
         "max_parallel_loading_workers": 2,
         "structured_output": False,
+        "schema_in_prompt": False,
         "disable_thinking": False,
         "chat_template_kwargs": None,
         "json_out": None,
@@ -128,6 +129,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument("--run_tag", help="Optional tag for multi-process benchmarks")
 
     ap.add_argument("--structured_output", action="store_true")
+    ap.add_argument(
+        "--schema_in_prompt",
+        action="store_true",
+        help="Embed full JSON schema in the prompt and disable vLLM structured output",
+    )
     ap.add_argument("--disable_thinking", action="store_true")
     ap.add_argument("--chat_template_kwargs", help="JSON dict of chat template kwargs")
 
@@ -202,14 +208,25 @@ def main() -> None:
     )
     llm, tokenizer = build_llm(args.model, vllm_cfg)
 
-    json_schema = schema_bundle.wrapper if args.structured_output else None
+    use_structured_output = bool(args.structured_output)
+    if args.schema_in_prompt:
+        if use_structured_output:
+            print(
+                colored(
+                    "[info] --schema_in_prompt enabled; disabling --structured_output.",
+                    "YELLOW",
+                )
+            )
+        use_structured_output = False
+
+    json_schema = schema_bundle.wrapper if use_structured_output else None
     sampling_cfg = dict(
         temperature=args.temperature,
         top_p=args.top_p,
         max_new_tokens=args.max_new_tokens,
         seed=args.seed if args.seed != 0 else None,
     )
-    sampling = build_sampling(sampling_cfg, args.structured_output, json_schema)
+    sampling = build_sampling(sampling_cfg, use_structured_output, json_schema)
 
     chat_template_kwargs = {}
     if args.chat_template_kwargs:
@@ -223,7 +240,10 @@ def main() -> None:
     if args.disable_thinking:
         chat_template_kwargs["enable_thinking"] = False
     force_plain = args.prompt_mode == "plain"
-    system_prompt = build_system_prompt(schema_bundle)
+    system_prompt = build_system_prompt(
+        schema_bundle,
+        include_json_schema=bool(args.schema_in_prompt),
+    )
     keys_str = json.dumps(schema_bundle.schema_keys, ensure_ascii=False)
 
     ds = load_dataset(args.dataset, split=args.split, streaming=True)
@@ -306,7 +326,8 @@ def main() -> None:
         "batch_size": args.batch_size,
         "max_new_tokens": args.max_new_tokens,
         "prompt_mode": args.prompt_mode,
-        "structured_output": bool(args.structured_output),
+        "structured_output": bool(use_structured_output),
+        "schema_in_prompt": bool(args.schema_in_prompt),
         "num_shards": args.num_shards,
         "shard_idx": args.shard_idx,
         "start_time": start_iso,

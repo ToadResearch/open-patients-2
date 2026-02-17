@@ -81,6 +81,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "model": None,
         "schema": "configs/schemas/schema.json",
         "prompt_mode": "chat",
+        "schema_in_prompt": False,
         "chat_template_kwargs": None,
         "disable_thinking": False,
         "id": None,
@@ -108,6 +109,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--prompt_mode",
         choices=["chat", "plain"],
         help="Prompt formatting mode (chat uses tokenizer template if available)",
+    )
+    ap.add_argument(
+        "--schema_in_prompt",
+        action="store_true",
+        help="Embed full JSON schema wrapper in the rendered system prompt",
     )
     ap.add_argument(
         "--id",
@@ -184,7 +190,10 @@ def main() -> None:
         raise SystemExit("Selected row does not contain a text description.")
 
     schema_bundle = load_schema(schema_path)
-    system_prompt = build_system_prompt(schema_bundle)
+    system_prompt = build_system_prompt(
+        schema_bundle,
+        include_json_schema=bool(args.schema_in_prompt),
+    )
     keys_str = json.dumps(schema_bundle.schema_keys, ensure_ascii=False)
     user_prompt = USER_TEMPLATE.format(note=note, keys=keys_str)
 
@@ -208,6 +217,7 @@ def main() -> None:
     print(f"Selected id: {colored(str(row_id), 'CYAN')}")
     print(f"Dataset: {colored(f'{args.dataset} ({args.split})', 'CYAN')}")
     print(f"Prompt mode: {colored(args.prompt_mode, 'CYAN')}")
+    print(f"Schema in prompt: {colored(str(bool(args.schema_in_prompt)), 'CYAN')}")
     print(f"Note chars: {colored(str(len(note)), 'CYAN')}")
     print("")
 

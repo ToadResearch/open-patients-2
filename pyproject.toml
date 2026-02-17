@@ -25,9 +25,12 @@ open-patients-replicas = "src.cli.launch:main"
 open-patients-bench = "src.cli.bench:main"
 open-patients-bench-replicas = "src.cli.bench_replicas:main"
 open-patients-check-prompt = "src.cli.check_prompt:main"
+open-patients-prompt-stats = "src.cli.prompt_stats:main"
+open-patients-prompt-stats-replicas = "src.cli.prompt_stats_replicas:main"
 open-patients-usmle-map = "src.cli.usmle_map:main"
 open-patients-push = "src.cli.push_to_hf:main"
 open-patients-test = "src.cli.test_runner:main"
+open-patients-view = "src.cli.view_outputs:main"
 
 [build-system]
 requires = ["hatchling>=1.24.0"]
