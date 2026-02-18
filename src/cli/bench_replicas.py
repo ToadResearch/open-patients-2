@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launcher for replica-style benchmark runs (one process per GPU).
+Launcher for replica-style benchmark runs (one process per shard worker).
 """
 
 from __future__ import annotations
@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import subprocess
 import sys
 import time
@@ -20,22 +19,13 @@ from ..core.config import load_run_config
 from ..utils.utils import colored, print_header
 
 
-def _split_csv(val: str) -> List[str]:
-    return [x.strip() for x in val.split(",") if x.strip()]
-
-
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Launch replica-sharded benchmark runs.")
     ap.add_argument("--config", required=True, help="Run profile YAML (configs/runs/*.yaml)")
     ap.add_argument(
         "--replicas", type=int, default=None, help="Override parallel.replicas from config"
     )
-    ap.add_argument("--run_id", default=None, help="Optional run id subfolder name")
-    ap.add_argument(
-        "--gpus",
-        default=None,
-        help="Comma-separated GPU IDs (defaults to 0..replicas-1)",
-    )
+    ap.add_argument("--run_id", default=None, help="Optional benchmark folder name")
     ap.add_argument("--dry_run", action="store_true", help="Print commands without launching")
     ap.add_argument(
         "extra_args",
@@ -54,21 +44,13 @@ def main() -> None:
     if replicas < 1:
         raise SystemExit("replicas must be >= 1")
 
-    if args.gpus:
-        gpus = _split_csv(args.gpus)
-    else:
-        gpus = [str(i) for i in range(replicas)]
-
-    if len(gpus) < replicas:
-        raise SystemExit(f"Not enough GPU IDs for replicas={replicas}: {gpus}")
-
     extra = list(args.extra_args)
     if extra and extra[0] == "--":
         extra = extra[1:]
 
     if "--json_out" in extra:
         raise SystemExit(
-            "open-patients-bench-replicas manages per-replica --json_out paths; "
+            "op-bench-replicas manages per-replica --json_out paths; "
             "remove --json_out from extra args."
         )
 
@@ -84,12 +66,6 @@ def main() -> None:
     root = Path(__file__).resolve().parents[2]
     procs: List[subprocess.Popen] = []
     for i in range(replicas):
-        env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = gpus[i]
-        env["PYTHONPATH"] = str(root) + (
-            os.pathsep + env["PYTHONPATH"] if "PYTHONPATH" in env else ""
-        )
-
         json_out = run_dir / f"bench_r{i}.json"
         cmd = [
             sys.executable,
@@ -107,15 +83,10 @@ def main() -> None:
             str(json_out),
         ] + extra
 
-        print(
-            colored(
-                f"[bench] shard {i}/{replicas - 1} on GPU {gpus[i]}: {' '.join(cmd)}",
-                "CYAN",
-            )
-        )
+        print(colored(f"[bench] shard {i}/{replicas - 1}: {' '.join(cmd)}", "CYAN"))
         if args.dry_run:
             continue
-        procs.append(subprocess.Popen(cmd, cwd=root, env=env))
+        procs.append(subprocess.Popen(cmd, cwd=root))
 
     if args.dry_run:
         return
@@ -138,6 +109,7 @@ def main() -> None:
                 pass
 
     if replica_metrics:
+
         def _parse_iso(ts: str) -> dt.datetime:
             return dt.datetime.fromisoformat(ts)
 

@@ -541,24 +541,36 @@ VIEW_HTML = """
         color: #111827;
       }
       .json {
-        margin: 0;
+        margin: 6px 0 0 0;
         white-space: pre-wrap;
         background: #0f172a;
         color: #e2e8f0;
         border-radius: 8px;
         padding: 10px;
         max-height: 620px;
-        min-height: 340px;
+        min-height: 420px;
         overflow: auto;
       }
-      .split {
+      .cardBody {
         display: grid;
-        grid-template-columns: 1.25fr 0.75fr;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr) minmax(340px, 1fr);
         gap: 10px;
         margin-top: 10px;
       }
+      .pane {
+        min-width: 0;
+      }
+      @media (max-width: 1280px) {
+        .cardBody {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+        .jsonPane {
+          grid-column: 1 / -1;
+        }
+      }
       @media (max-width: 900px) {
-        .split { grid-template-columns: 1fr; }
+        .cardBody { grid-template-columns: 1fr; }
+        .jsonPane { grid-column: auto; }
       }
       .paneTitle {
         font-weight: 700;
@@ -582,8 +594,11 @@ VIEW_HTML = """
       }
       mark.hl {
         background: #fde68a;
-        border-radius: 2px;
-        padding: 0 1px;
+        border-radius: 0;
+        padding: 0;
+        line-height: inherit;
+        font: inherit;
+        color: inherit;
       }
       .evList {
         margin-top: 6px;
@@ -635,8 +650,6 @@ VIEW_HTML = """
         font-size: 0.85rem;
         white-space: pre-wrap;
       }
-      details.raw { margin-top: 10px; }
-      details.raw > summary { cursor: pointer; color: var(--muted); }
       .bad {
         color: var(--bad);
         font-weight: 600;
@@ -990,19 +1003,19 @@ VIEW_HTML = """
             <strong>${escapeHtml(id)} · line ${line}</strong>
             <span>${patientStatus(rec)}</span>
           </div>
-          <div class="split">
-            <div>
+          <div class="cardBody">
+            <div class="pane">
               <div class="paneTitle">Clinical note</div>
               <div class="noteBox" data-note>${escapeHtml(noteText)}</div>
               <div class="noteHint" data-note-status></div>
             </div>
-            <div>
+            <div class="pane">
               <div class="paneTitle">Extracted entries (evidence)</div>
               <div class="evList" data-ev-list>${evHtml}</div>
-              <details class="raw">
-                <summary>Raw JSON</summary>
-                <pre class="json">${escapeHtml(JSON.stringify(rec, null, 2))}</pre>
-              </details>
+            </div>
+            <div class="pane jsonPane">
+              <div class="paneTitle">Raw JSON</div>
+              <pre class="json">${escapeHtml(JSON.stringify(rec, null, 2))}</pre>
             </div>
           </div>
         `;

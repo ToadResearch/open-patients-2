@@ -31,7 +31,7 @@ def _percentile_nearest_rank(sorted_vals: List[int], pct: float) -> int:
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
-        description="Run open-patients-prompt-stats across multiple shard replicas and aggregate."
+        description="Run op-prompt-stats across multiple shard replicas and aggregate."
     )
     ap.add_argument("--tokenizer", required=True, help="HF tokenizer name")
     ap.add_argument("--config", default=None, help="Run profile YAML (configs/runs/*.yaml)")
@@ -82,7 +82,7 @@ def main() -> None:
     if any(flag in extra for flag in managed_flags):
         raise SystemExit(
             "Do not pass managed shard flags in extra args; "
-            "open-patients-prompt-stats-replicas manages those automatically."
+            "op-prompt-stats-replicas manages those automatically."
         )
 
     run_id = args.run_id

@@ -7,9 +7,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Tuple
 
 _JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
+_REASONING_TAG_RE = re.compile(
+    r"<(?P<tag>think|reasoning)>\s*(?P<body>.*?)\s*</(?P=tag)>",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def colored(st, color: str | None, background: bool = False):
@@ -39,19 +43,62 @@ def safe_json_extract(text: str) -> Optional[dict]:
     Returns dict or None.
     """
     text = text.strip()
+
+    # Primary path: scan for the first parseable JSON object and decode it.
+    # raw_decode tolerates trailing content after the parsed object.
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(text[i:])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
+
+    # Fallback: recover object-like span and apply a minimal trailing-comma fix.
     m = _JSON_OBJ_RE.search(text)
     if not m:
         return None
     blob = m.group(0).strip()
+    blob2 = re.sub(r",(\s*[}\]])", r"\1", blob)
     try:
-        return json.loads(blob)
+        parsed = json.loads(blob2)
     except Exception:
-        # Very small, safe-ish repairs: remove trailing commas.
-        blob2 = re.sub(r",(\s*[}\]])", r"\1", blob)
-        try:
-            return json.loads(blob2)
-        except Exception:
-            return None
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def split_reasoning_and_final(text: str) -> Tuple[Optional[str], str]:
+    """
+    Split assistant output into (reasoning, final_text) when reasoning tags are present.
+
+    For reasoning-enabled open models (commonly via vLLM), outputs often include:
+      <think> ... </think>
+    or:
+      <reasoning> ... </reasoning>
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None, ""
+
+    chunks = []
+
+    def _collect(match: re.Match[str]) -> str:
+        body = (match.group("body") or "").strip()
+        if body:
+            chunks.append(body)
+        return ""
+
+    final = _REASONING_TAG_RE.sub(_collect, raw).strip()
+    if not chunks:
+        return None, raw
+
+    reasoning = "\n\n".join(chunks).strip()
+    if not final:
+        final = raw
+    return (reasoning or None), final
 
 
 def make_chat_prompt(

@@ -1,7 +1,7 @@
 [project]
 name = "open-patients-plus"
 version = "0.1.0"
-description = "Enrich ncbi/Open-Patients notes into an indexable JSONL dataset using vLLM."
+description = "Enrich ncbi/Open-Patients notes into an indexable JSONL dataset via OpenAI-compatible APIs."
 readme = "README.md"
 requires-python = ">=3.10"
 
@@ -10,6 +10,8 @@ dependencies = [
   "tqdm>=4.66.0",
   "huggingface_hub>=0.23.0",
   "pyyaml>=6.0",
+  "python-dotenv>=1.0.1",
+  "openai>=1.58.1",
   "transformers>=4.57.6",
 ]
 
@@ -20,17 +22,18 @@ vllm = [
 
 
 [project.scripts]
-open-patients-worker = "src.cli.enrich:main"
-open-patients-replicas = "src.cli.launch:main"
-open-patients-bench = "src.cli.bench:main"
-open-patients-bench-replicas = "src.cli.bench_replicas:main"
-open-patients-check-prompt = "src.cli.check_prompt:main"
-open-patients-prompt-stats = "src.cli.prompt_stats:main"
-open-patients-prompt-stats-replicas = "src.cli.prompt_stats_replicas:main"
-open-patients-usmle-map = "src.cli.usmle_map:main"
-open-patients-push = "src.cli.push_to_hf:main"
-open-patients-test = "src.cli.test_runner:main"
-open-patients-view = "src.cli.view_outputs:main"
+op-worker = "src.cli.enrich:main"
+op-replicas = "src.cli.launch:main"
+op-bench = "src.cli.bench:main"
+op-bench-replicas = "src.cli.bench_replicas:main"
+op-vllm-serve = "src.cli.serve_vllm:main"
+op-check-prompt = "src.cli.check_prompt:main"
+op-prompt-stats = "src.cli.prompt_stats:main"
+op-prompt-stats-replicas = "src.cli.prompt_stats_replicas:main"
+op-usmle-map = "src.cli.usmle_map:main"
+op-push = "src.cli.push_to_hf:main"
+op-test = "src.cli.test_runner:main"
+op-view = "src.cli.view_outputs:main"
 
 [build-system]
 requires = ["hatchling>=1.24.0"]

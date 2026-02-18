@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launcher for replica-style sharded runs (one process per GPU).
+Launcher for replica-style sharded runs (one process per shard worker).
 """
 
 from __future__ import annotations
@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -19,10 +18,6 @@ from typing import List
 
 from ..core.config import load_run_config
 from ..utils.utils import colored, print_header
-
-
-def _split_csv(val: str) -> List[str]:
-    return [x.strip() for x in val.split(",") if x.strip()]
 
 
 def _combine_all_jsonl_shards(shards_dir: Path, out_path: Path) -> int:
@@ -47,11 +42,6 @@ def parse_args() -> argparse.Namespace:
         "--replicas", type=int, default=None, help="Override parallel.replicas from config"
     )
     ap.add_argument("--run_id", default=None, help="Optional run id subfolder name (under out_dir)")
-    ap.add_argument(
-        "--gpus",
-        default=None,
-        help="Comma-separated GPU IDs (defaults to 0..replicas-1)",
-    )
     ap.add_argument("--dry_run", action="store_true", help="Print commands without launching")
     ap.add_argument(
         "extra_args",
@@ -69,14 +59,6 @@ def main() -> None:
     replicas = args.replicas or parallel.get("replicas") or 1
     if replicas < 1:
         raise SystemExit("replicas must be >= 1")
-
-    if args.gpus:
-        gpus = _split_csv(args.gpus)
-    else:
-        gpus = [str(i) for i in range(replicas)]
-
-    if len(gpus) < replicas:
-        raise SystemExit(f"Not enough GPU IDs for replicas={replicas}: {gpus}")
 
     extra = list(args.extra_args)
     if extra and extra[0] == "--":
@@ -127,12 +109,6 @@ def main() -> None:
     root = Path(__file__).resolve().parents[2]
     procs: List[subprocess.Popen] = []
     for i in range(replicas):
-        env = os.environ.copy()
-        env["CUDA_VISIBLE_DEVICES"] = gpus[i]
-        env["PYTHONPATH"] = str(root) + (
-            os.pathsep + env["PYTHONPATH"] if "PYTHONPATH" in env else ""
-        )
-
         cmd = [
             sys.executable,
             "-m",
@@ -149,15 +125,10 @@ def main() -> None:
         if run_id:
             cmd += ["--run_id", run_id]
 
-        print(
-            colored(
-                f"[launch] shard {i}/{replicas - 1} on GPU {gpus[i]}: {' '.join(cmd)}",
-                "CYAN",
-            )
-        )
+        print(colored(f"[launch] shard {i}/{replicas - 1}: {' '.join(cmd)}", "CYAN"))
         if args.dry_run:
             continue
-        procs.append(subprocess.Popen(cmd, cwd=root, env=env))
+        procs.append(subprocess.Popen(cmd, cwd=root))
 
     if args.dry_run:
         return
@@ -170,10 +141,8 @@ def main() -> None:
     if exit_code != 0:
         raise SystemExit(exit_code)
 
-    # Workers write into either a run subfolder (when run_id is used / resume=false) or directly into base_out_dir.
     out_root = run_dir if run_dir is not None else base_out_dir
 
-    # Aggregate replica metadata into out_root/run_metadata.json.
     replica_meta = []
     for i in range(replicas):
         path = out_root / f"run_metadata_r{i}.json"
@@ -184,6 +153,7 @@ def main() -> None:
                 pass
 
     if replica_meta:
+
         def _parse_iso(ts: str) -> dt.datetime:
             return dt.datetime.fromisoformat(ts)
 
@@ -231,7 +201,6 @@ def main() -> None:
             encoding="utf-8",
         )
 
-    # Combine shards into a single out_root/data.jsonl for convenience.
     shards_dir = out_root / "shards"
     if shards_dir.exists():
         combined_path = out_root / "data.jsonl"

@@ -1,10 +1,17 @@
 # Open-Patients+
 
-Enrich `ncbi/Open-Patients` into an indexable JSONL dataset using a local vLLM model.
+Enrich `ncbi/Open-Patients` into structured JSONL using OpenAI-compatible Chat Completions endpoints.
 
-## Quickstart (Step-by-Step)
+The worker supports:
+- one or many endpoints (`api.endpoints`)
+- dynamic multi-endpoint request scheduling
+- schema-oriented JSON extraction
+- sharded outputs + resume tracking
+- failed-record artifacts
 
-1. Set up the environment:
+## Quickstart
+
+1. Set up environment:
 
 ```bash
 uv venv
@@ -12,322 +19,176 @@ source .venv/bin/activate
 uv sync
 ```
 
-On Linux GPU machines, install the vLLM extra:
+API keys can be stored in a local `.env` file (for example `GEMINI_API_KEY=...`).
+CLI commands auto-load `.env`, so manual `export` is not required.
+
+If you want to run local vLLM servers, install vLLM extra:
 
 ```bash
 uv sync --extra vllm
 ```
 
-2. Ensure the USMLE mapping file exists:
+2. Ensure USMLE mapping exists:
 
 ```bash
-uv run open-patients-usmle-map
+uv run op-usmle-map
 ```
 
-This will skip if `configs/usmle_mapping.json` is already present.
+3. Configure endpoint(s) in a run profile (`configs/runs/*.yaml`) under `api.endpoints`.
+   Ready-to-run provider presets:
+   - `configs/runs/openrouter-trinity-mini.yaml`
+   - `configs/runs/gemini-3-flash-preview.yaml`
+   - Gemini preset includes `extra_body.reasoning_effort: minimal` to reduce structured-output truncation.
 
-3. Run an enrichment job using a run profile:
+4. (Optional) Start local vLLM server(s) from config:
 
 ```bash
-uv run open-patients-worker \
-		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
+uv run op-vllm-serve --config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
-Relative `out_dir` values are automatically placed under `outputs/`.
-
-When `--resume` is not set, outputs are written to a new run subfolder under `out_dir`
-(e.g., `outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx`).
-(If you use the Unsloth profile, this will be `outputs/open_patients_medgemma27b_unsloth/...`.)
-
-4. (Optional) Launch multi-GPU replica runs:
+5. Run enrichment:
 
 ```bash
-uv run open-patients-replicas \
-		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
-		--gpus 0,1,2,3,4,5,6,7
+uv run op-worker --config configs/runs/medgemma-27b-text-it-unsloth.yaml
 ```
 
-5. Push the enriched dataset to Hugging Face Hub:
+6. (Optional) Launch replica-sharded client workers from the main worker command:
 
 ```bash
-uv run open-patients-push \
-		--data_dir outputs/open_patients_medgemma27b_unsloth/run_YYYYmmdd_HHMMSS_xxxxxx \
-		--repo_name open-patients-medgemma27b-unsloth \
-		--org your-organization \
-		--private
+uv run op-worker --config configs/runs/medgemma-27b-text-it-unsloth.yaml --replicas 8
 ```
 
-**Hugging Face token:** Required for pushing. You can either:
-- run `uv run hf auth login` once (uses a cached token), or
-- pass `--token YOUR_TOKEN`, or
-- set `HF_TOKEN` / `HUGGINGFACE_HUB_TOKEN` in your environment.
+7. Benchmark throughput:
+
+```bash
+uv run op-bench --config configs/runs/medgemma-27b-text-it-unsloth.yaml
+```
+
+8. (Optional) Run replica-sharded benchmark workers from the same benchmark command:
+
+```bash
+uv run op-bench --config configs/runs/medgemma-27b-text-it-unsloth.yaml --replicas 8
+```
+
+## Run Profile Shape (API)
+
+```yaml
+run:
+  dataset: ncbi/Open-Patients
+  split: train
+  out_dir: ./open_patients_medgemma27b_unsloth
+  resume: true
+  # -1 (or omitted) => full dataset; positive integer => sample limit
+  samples: -1
+  shard_size: 50000
+  schema: configs/schemas/schema.json
+  usmle_mapping: configs/usmle_mapping.json
+
+model:
+  name: unsloth/medgemma-27b-text-it
+  prompt_mode: chat
+
+api:
+  timeout_s: 120.0
+  max_retries: 4
+  retry_backoff_initial_s: 1.0
+  retry_backoff_max_s: 30.0
+  outage_abort_after_s: 900.0
+  endpoints:
+    - name: medgemma27b
+      base_url: http://127.0.0.1:8000/v1
+      model: unsloth/medgemma-27b-text-it
+      api_key_env: OPENAI_API_KEY
+      concurrency: 128
+      structured_mode: json_schema # json_schema | json_object | none
+      extra_body: {}
+      serve:
+        host: 127.0.0.1
+        port: 8000
+        cuda_visible_devices: "0"
+        tensor_parallel_size: 1
+        dtype: auto
+        max_model_len: 8192
+        gpu_memory_utilization: 0.92
+        enable_chunked_prefill: true
+        enable_prefix_caching: true
+        kv_cache_dtype: fp8
+        calculate_kv_scales: false
+        max_num_batched_tokens: 8192
+        max_num_seqs: 128
+        max_parallel_loading_workers: 2
+
+sampling:
+  temperature: 0.0
+  top_p: 0.95
+  max_new_tokens: 8192
+  seed: 0
+  structured_output: true
+
+parallel:
+  replicas: 8
+```
+
+## Multi-Endpoint Scheduling
+
+`op-worker` uses a dynamic async queue:
+- each endpoint has its own concurrency (`api.endpoints[].concurrency`)
+- requests are pulled by whichever endpoint worker is free
+- faster endpoints naturally process more notes
+
+## Structured Output
+
+- `sampling.structured_output: true` enables provider structured response mode where possible.
+- `prompt.schema_in_prompt: true` embeds full schema text in prompt and disables structured response mode for that run.
+- parsing fallback still uses JSON extraction, and failed parses are retained.
+
+## Failure Behavior
+
+Per-record failures are written, not dropped:
+- record in main dataset with `extraction_ok: false`
+- raw model text and error metadata retained
+
+Additional artifacts:
+- `failed_ids*.txt`
+- `shards/failed_records*.jsonl`
+
+Run-level outage behavior:
+- worker retries per-request with exponential backoff
+- if all endpoints stay unhealthy past `api.outage_abort_after_s`, the run aborts
+
+## Output Files
+
+Inside `out_dir` (or run subfolder when `--resume` is false):
+
+- `shards/data_shard_00000.jsonl`, `shards/data_shard_00001.jsonl`, ...
+- `data.jsonl` (single-process auto-combine; replica runs combine after all shards finish)
+- `processed_ids*.txt`
+- `failed_ids*.txt` (only when failures occur)
+- `shards/failed_records*.jsonl` (only when failures occur)
+- `run_metadata*.json`
+
+## Commands
+
+Primary commands:
+- `op-worker`: Main enrichment run. Usage: `uv run op-worker --config <run.yaml> [--replicas N]`.
+- `op-bench`: Throughput benchmark run. Usage: `uv run op-bench --config <run.yaml> [--replicas N]`.
+- `op-vllm-serve`: Starts one or more local `vllm serve` API servers from `api.endpoints[].serve`.
+- `op-check-prompt`: Renders a sample prompt exactly as the model sees it.
+- `op-prompt-stats`: Computes prompt token/char length distribution.
+- `op-prompt-stats-replicas`: Parallel prompt stats across shard replicas with merged summary.
+- `op-usmle-map`: Creates `configs/usmle_mapping.json` if missing (or regenerates with `--force`).
+- `op-push`: Uploads generated dataset outputs to Hugging Face Hub.
+- `op-test`: Runs the unit test suite.
+- `op-view`: Opens the local output viewer for browsing generated records.
+
+Compatibility wrappers (optional):
+- `op-replicas`: Explicit replica launcher wrapper (equivalent to worker replica mode).
+- `op-bench-replicas`: Explicit benchmark replica launcher wrapper (equivalent to bench replica mode).
 
 ## Tests
 
-Run the unit tests:
+Run unit tests:
 
 ```bash
-uv run open-patients-test
+uv run op-test
 ```
-
-## Benchmarking
-
-Run a quick throughput benchmark (defaults to 500 notes):
-
-```bash
-uv run open-patients-bench \
-		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
-```
-
-Measure full-dataset prompt length distribution (real rendered prompts with note text):
-
-```bash
-uv run open-patients-prompt-stats \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--tokenizer Qwen/Qwen3.5-397B-A17B
-```
-
-Parallel full-dataset prompt stats with exact aggregate p50/p95:
-
-```bash
-uv run open-patients-prompt-stats-replicas \
-	--config configs/runs/medgemma-27b-text-it.yaml \
-	--tokenizer Qwen/Qwen3.5-397B-A17B \
-	--workers 8 \
-	--json_out benchmarks/prompts/prompt_stats_qwen3_5_397b_a17b.json
-```
-
-Run a multi-GPU replica benchmark (one process per GPU):
-
-```bash
-uv run open-patients-bench-replicas \
-		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
-		--gpus 0,1,2,3
-```
-
-Note: `--max_notes` applies per replica in the multi-process benchmark.
-
-You can also add a `benchmark:` section to a run profile to set defaults (e.g., `max_notes`, `batch_size`).
-
-By default, metrics are written under `benchmarks/`. Replica runs create a folder with
-per-replica metrics plus a `bench_metadata.json` aggregate.
-Override the note count or choose a custom metrics path:
-
-```bash
-uv run open-patients-bench \
-		--config configs/runs/medgemma-27b-text-it-unsloth.yaml \
-		--max_notes 500 \
-		--json_out benchmarks/bench_metrics.json
-```
-
-## Run Details
-
-See Quickstart above for common commands. This section captures flag/reference details.
-
-Command naming:
-- `open-patients-worker` runs a single enrichment process.
-- `open-patients-replicas` launches multiple workers across GPUs.
-  It also assigns per-replica tags to avoid file collisions and writes a combined
-  `run_metadata.json` after all replicas finish.
-- `open-patients-bench` runs a single-process throughput benchmark.
-- `open-patients-bench-replicas` launches multi-process benchmarks across GPUs and writes
-  a `bench_metadata.json` aggregate.
-- `open-patients-view` starts a lightweight web viewer for `data_shard*.jsonl` files.
-
----
-
-## What it produces
-
-For each row, the script outputs a JSON record including:
-
-**Record**
-- `id` (original Open-Patients `_id`)
-
-**Provenance**
-- `source` (URL back to origin; derived from input `_id`)
-- `usmle-*` -> HF viewer row URL
-- `pmc-*` -> PMC article URL
-- `trec-cds-*` / `trec-ct-*` -> TREC CDS year URL
-
-**Scalars**
-- `age_years`
-- `sex` (`M|F`)
-- `pregnant` (`pregnant|not_pregnant|null`)
-- `chief_complaint`
-- `primary_diagnosis`
-- `care_setting` (`ED|inpatient|outpatient|ICU|unknown|null`)
-
-**Typed Lists (with structured attributes)**
-
-- `conditions`: list of `{name, status, body_site, laterality, certainty, evidence}`
-  - Diagnoses/diseases/medical problems (including PMH/comorbidities)
-  - `status`: `present|negated|uncertain|historical`
-  - `certainty`: `suspected|confirmed|ruled_out|unknown`
-
-- `symptoms_signs`: list of `{name, status, body_site, laterality, certainty, evidence}`
-  - Patient-reported symptoms and clinician-observed signs/exam findings (HPI/ROS/PE)
-
-- `medications`: list of `{name, status, dose, unit, route, frequency, evidence}`
-  - Individual medication mentions with dosing details
-  - `status`: `current|discontinued|historical|prescribed`
-
-- `procedures`: list of `{name, status, body_site, laterality, date, evidence}`
-  - Discrete clinical actions/events (tests, biopsies, surgeries, interventions)
-  - `status`: `performed|planned|cancelled|recommended`
-
-- `treatments`: list of `{type, name, dose, unit, fractions, boost_dose, boost_unit, route, frequency, cycles, status, evidence}`
-  - Therapy courses/regimens (radiation, chemo cycles, endocrine/targeted plans)
-  - `type`: `surgery|radiation|chemotherapy|immunotherapy|hormone_therapy|targeted_therapy|medication|other`
-
-- `observations`: list of `{category, test, status, certainty, value, unit, interpretation, flag, body_site, laterality, location_detail, finding, assessment, method, measurements, evidence}`
-  - Objective measurements, test results, and scored assessments (imaging, pathology, labs, vitals, clinical scores)
-  - `category`: `imaging|pathology|lab|vital|clinical|genomics|microbiology|device`
-  - `flag`: `positive|negative|high|low|normal|abnormal|equivocal|unknown` (normalized label for filtering)
-
-- `family_history`: list of `{condition, relative, relative_type, age_at_diagnosis, status, evidence}`
-  - Family history of conditions (not patient's own diagnoses)
-
-**Audit**
-- `extraction_ok` (bool)
-- `created_at` (UTC ISO timestamp)
-- if extraction fails: `model_output_raw` is stored for debugging
-
-
-### Notes on flags
-
-`--config`
-Load a run profile YAML (see `configs/runs/*.yaml`). CLI flags override values from the profile.
-
-`--structured_output`
-**Recommended.** Uses vLLM's structured output feature with JSON schema constrained decoding (via xgrammar/guidance backends). This guarantees the output conforms to the schema defined in `configs/schemas/schema.json`, eliminating JSON parsing errors.
-
-`--schema_in_prompt`
-Embeds the full JSON schema wrapper directly into the system prompt and disables `--structured_output` for that run. Useful when you want unconstrained decoding but still want the model to see the full schema text.
-
-`--schema`
-Path to the JSON schema wrapper (default: `configs/schemas/schema.json`).
-
-`--resume`
-Skips input `_id`s already present in `processed_ids.txt` (stored in `out_dir`). Useful for long runs.
-
-`--batch_size`
-Increase for throughput if you have GPU headroom. If you OOM, reduce it.
-
-
-`--tensor_parallel_size`
-Set `>1` if your vLLM is running across multiple GPUs.
-
-`--prompt_mode`
-Use `plain` to bypass the tokenizer chat template for non-chat models.
-
-`--chat_template_kwargs`
-JSON dict of tokenizer chat-template kwargs (merged with `--disable_thinking`).
-
-`--run_id`
-Optional run folder name under `out_dir` (used by `open-patients-replicas`).
-
-`--run_tag`
-Prefix for output shard/metadata filenames (useful for multi-process runs).
-
-### Multi-process sharding (N workers)
-
-If you want to run multiple processes (on one machine or across nodes) without overlap, use `--num_shards` and `--shard_idx`.
-
-Example: 4 local workers:
-
-```bash
-for i in 0 1 2 3; do
-	uv run open-patients-worker \
-		--model gpt-oss-20b \
-		--out_dir outputs/open_patients_gpt_oss_20b \
-		--batch_size 32 \
-		--structured_output \
-		--resume \
-		--num_shards 4 \
-		--shard_idx "$i" \
-		--run_tag "r$i" &
-done
-wait
-```
-
-Each worker processes a deterministic hash-based partition of the input `_id`.
-`--run_tag` ensures each worker writes distinct shard files and metadata.
-
-You can also use the launcher (reads `parallel.replicas` from the run profile):
-
-```bash
-uv run open-patients-replicas \
-		--config configs/runs/medgemma-27b-text-it-unsloth.yaml
-```
-
-### Output files
-
-Inside `--out_dir` (or the run subfolder when `--resume` is not set):
-
-- `shards/data_shard_00000.jsonl`, `shards/data_shard_00001.jsonl`, ...
-	Enriched dataset shards.
-- `data.jsonl`
-	Concatenation of all shard files (single-process runs). For replica runs this is written by
-	`open-patients-replicas` after all workers finish.
-- `processed_ids.txt`
-	One input `_id` per line; used by `--resume`.
-- `run_metadata.json`
-	Run metadata (runtime, tokens/sec, config, and counters).
-
-For multi-process runs (with `open-patients-replicas` or manual `--run_tag`):
-- `shards/data_shard_r0_00000.jsonl`, `shards/data_shard_r1_00000.jsonl`, ...
-- `processed_ids_r0.txt`, `processed_ids_r1.txt`, ...
-- `run_metadata_r0.json`, `run_metadata_r1.json`, ...
-- `run_metadata.json` (aggregated across replicas; written by `open-patients-replicas`).
-- `data.jsonl` (combined across replicas; written by `open-patients-replicas`).
-
-### View output records
-
-```bash
-uv run open-patients-view \
-	--model open_patients_medgemma4b_unsloth \
-	--open-browser
-```
-
-With no args, the viewer opens to the latest available run in `outputs/`.
-Pass `--model` to open the latest run for that model.
-Use the UI to switch between models and runs.
-
-
-## Loading the output with Hugging Face Datasets
-
-```python
-from datasets import load_dataset
-
-ds = load_dataset(
-		"json",
-    data_files="outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx/data.jsonl",
-		split="train",
-)
-
-print(ds.column_names)
-print(ds[0])
-```
-
-Convert to Parquet for fast filtering:
-
-```python
-ds.to_parquet("outputs/open_patients_medgemma27b/run_YYYYmmdd_HHMMSS_xxxxxx.parquet")
-```
-
-## Pushing to Hugging Face Hub
-
-Use the `open-patients-push` command to upload your enriched dataset (see Quickstart for a full example).
-
-### Push options
-
-| Flag | Description |
-|------|-------------|
-| `--data_dir` | Directory containing the enriched JSONL shards (required) |
-| `--repo_name` | Name of the HF dataset repository (required) |
-| `--org` | Organization or username (defaults to your personal account) |
-| `--private` | Make the repository private |
-| `--parquet` | Convert to Parquet before pushing (recommended for large datasets) |
-| `--max_shard_size` | Max shard size for Parquet (e.g., `500MB`, `1GB`) |
-| `--commit_message` | Custom commit message |
-| `--token` | HF API token (uses cached token from `huggingface-cli login` if not provided) |

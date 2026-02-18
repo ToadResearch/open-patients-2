@@ -3,7 +3,7 @@ run:
   split: train
   out_dir: ./open_patients_qwen3_235b_a22b
   resume: true
-  max_notes: 0
+  samples: -1
   shard_size: 50000
   schema: configs/schemas/schema.json
   usmle_mapping: configs/usmle_mapping.json
@@ -12,21 +12,36 @@ model:
   name: Qwen/Qwen3-235B-A22B
   prompt_mode: chat
 
-vllm:
-  tensor_parallel_size: 8
-  pipeline_parallel_size: 1
-  enable_expert_parallel: true
-  dtype: auto
-  max_model_len: 8192
-  gpu_memory_utilization: 0.92
-  enable_chunked_prefill: true
-  enable_prefix_caching: true
-  kv_cache_dtype: fp8
-  calculate_kv_scales: true
-  quantization: null
-  max_num_batched_tokens: 8192
-  max_num_seqs: 128
-  max_parallel_loading_workers: 2
+api:
+  timeout_s: 120.0
+  max_retries: 4
+  retry_backoff_initial_s: 1.0
+  retry_backoff_max_s: 30.0
+  outage_abort_after_s: 900.0
+  endpoints:
+    - name: qwen235b
+      base_url: http://127.0.0.1:8002/v1
+      model: Qwen/Qwen3-235B-A22B
+      api_key_env: OPENAI_API_KEY
+      concurrency: 128
+      structured_mode: json_schema
+      extra_body: {}
+      serve:
+        host: 127.0.0.1
+        port: 8002
+        cuda_visible_devices: "0,1,2,3,4,5,6,7"
+        tensor_parallel_size: 8
+        enable_expert_parallel: true
+        dtype: auto
+        max_model_len: 8192
+        gpu_memory_utilization: 0.92
+        enable_chunked_prefill: true
+        enable_prefix_caching: true
+        kv_cache_dtype: fp8
+        calculate_kv_scales: true
+        max_num_batched_tokens: 8192
+        max_num_seqs: 128
+        max_parallel_loading_workers: 2
 
 sampling:
   temperature: 0.0
@@ -34,9 +49,6 @@ sampling:
   max_new_tokens: 700
   seed: 0
   structured_output: true
-
-prompt:
-  disable_thinking: true
 
 parallel:
   replicas: 8
