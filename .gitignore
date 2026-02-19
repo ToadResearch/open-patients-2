@@ -27,6 +27,15 @@ open_patients_enriched/**/*.jsonl
 .coverage
 htmlcov/
 
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / IDE
+.vscode/
+.idea/
+
 # Other
 extra/
 .DS_Store
