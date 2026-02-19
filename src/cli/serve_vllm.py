@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from ..core.config import load_run_config
 from ..core.llm_api import EndpointConfig, parse_api_endpoints
@@ -39,11 +39,13 @@ def _health_url(base_url: str) -> str:
     return base_url.rstrip("/") + "/models"
 
 
-def _wait_for_health(url: str, timeout_s: float, poll_s: float) -> bool:
+def _wait_for_health(
+    url: str, timeout_s: float, poll_s: float, headers: Optional[Dict[str, str]] = None
+) -> bool:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         try:
-            req = urllib.request.Request(url, method="GET")
+            req = urllib.request.Request(url, headers=headers or {}, method="GET")
             with urllib.request.urlopen(req, timeout=min(poll_s, 5.0)) as resp:
                 if 200 <= getattr(resp, "status", 0) < 300:
                     return True
@@ -53,7 +55,9 @@ def _wait_for_health(url: str, timeout_s: float, poll_s: float) -> bool:
     return False
 
 
-def _build_vllm_cmd(endpoint: EndpointConfig) -> tuple[List[str], Dict[str, str]]:
+def _build_vllm_cmd(
+    endpoint: EndpointConfig,
+) -> tuple[List[str], Dict[str, str], Dict[str, str]]:
     serve = dict(endpoint.serve or {})
     if not serve:
         raise ValueError(f"Endpoint '{endpoint.name}' is missing serve config.")
@@ -77,6 +81,9 @@ def _build_vllm_cmd(endpoint: EndpointConfig) -> tuple[List[str], Dict[str, str]
     extra_args = serve.pop("args", [])
     if not isinstance(extra_args, list):
         raise ValueError(f"Endpoint '{endpoint.name}' serve.args must be a list.")
+    extra_args = [str(x) for x in extra_args]
+
+    serve_api_key = serve.pop("api_key", "dummy")
 
     cmd: List[str] = ["vllm", "serve", model, "--host", host, "--port", str(port)]
 
@@ -89,8 +96,14 @@ def _build_vllm_cmd(endpoint: EndpointConfig) -> tuple[List[str], Dict[str, str]
             continue
         cmd.extend([flag, str(value)])
 
-    cmd.extend([str(x) for x in extra_args])
-    return cmd, env
+    if serve_api_key is not None and "--api-key" not in extra_args:
+        cmd.extend(["--api-key", str(serve_api_key)])
+
+    cmd.extend(extra_args)
+    health_headers: Dict[str, str] = {}
+    if serve_api_key is not None:
+        health_headers["Authorization"] = f"Bearer {serve_api_key}"
+    return cmd, env, health_headers
 
 
 def parse_args() -> argparse.Namespace:
@@ -158,11 +171,13 @@ def main() -> None:
     procs: List[subprocess.Popen] = []
     log_handles = []
     endpoint_logs: Dict[str, Path] = {}
+    endpoint_health_headers: Dict[str, Dict[str, str]] = {}
 
     for endpoint in endpoints:
-        cmd, env = _build_vllm_cmd(endpoint)
+        cmd, env, health_headers = _build_vllm_cmd(endpoint)
         log_path = log_dir / f"{endpoint.name}.log"
         endpoint_logs[endpoint.name] = log_path
+        endpoint_health_headers[endpoint.name] = health_headers
         print(colored(f"[launch] {endpoint.name}: {' '.join(cmd)}", "CYAN"))
         if "CUDA_VISIBLE_DEVICES" in env:
             print(
@@ -186,7 +201,12 @@ def main() -> None:
         for endpoint in endpoints:
             url = _health_url(endpoint.base_url)
             print(colored(f"[health] waiting for {endpoint.name}: {url}", "CYAN"))
-            ok = _wait_for_health(url, args.health_timeout_s, args.health_poll_s)
+            ok = _wait_for_health(
+                url,
+                args.health_timeout_s,
+                args.health_poll_s,
+                headers=endpoint_health_headers.get(endpoint.name),
+            )
             if not ok:
                 for p in procs:
                     if p.poll() is None:

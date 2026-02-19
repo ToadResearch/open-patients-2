@@ -55,10 +55,10 @@ class _FakeClient:
 
 
 class LLMApiTests(unittest.TestCase):
-    def test_default_client_factory_requires_api_key_env(self) -> None:
+    def test_default_client_factory_requires_api_key_env_for_remote(self) -> None:
         endpoint = EndpointConfig(
             name="missing-key",
-            base_url="http://127.0.0.1:8000/v1",
+            base_url="https://api.example.com/v1",
             model="test-model",
             api_key_env="OP_MISSING_TEST_KEY",
         )
@@ -66,6 +66,24 @@ class LLMApiTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "Set environment variable OP_MISSING_TEST_KEY"):
                 llm_api._default_client_factory(endpoint, 30.0)
+
+    def test_default_client_factory_uses_dummy_key_for_localhost(self) -> None:
+        endpoint = EndpointConfig(
+            name="local",
+            base_url="http://127.0.0.1:8000/v1",
+            model="test-model",
+            api_key_env="OP_MISSING_TEST_KEY",
+        )
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("src.core.llm_api.AsyncOpenAI") as mock_client:
+                llm_api._default_client_factory(endpoint, 30.0)
+
+        mock_client.assert_called_once_with(
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="dummy",
+            timeout=30.0,
+        )
 
     def test_request_chat_completion_uses_json_schema_mode(self) -> None:
         endpoint = EndpointConfig(
@@ -192,6 +210,64 @@ class LLMApiTests(unittest.TestCase):
         self.assertIsNone(result.error)
         self.assertEqual(result.attempts, 2)
         self.assertEqual(len(client.completions.calls), 2)
+
+    def test_request_chat_completion_omits_max_tokens_when_unset(self) -> None:
+        endpoint = EndpointConfig(
+            name="local",
+            base_url="http://127.0.0.1:8000/v1",
+            model="test-model",
+            structured_mode="none",
+        )
+        req = ChatRequest(
+            request_id="r1",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+        client = _FakeClient([_fake_response("ok")])
+
+        result = asyncio.run(
+            request_chat_completion(
+                client=client,
+                endpoint=endpoint,
+                api_settings=APISettings(max_retries=0),
+                request=req,
+                sampling_cfg={"temperature": 0.0, "top_p": 1.0, "max_new_tokens": None},
+                structured_output=False,
+                json_schema=None,
+            )
+        )
+
+        self.assertIsNone(result.error)
+        call = client.completions.calls[0]
+        self.assertNotIn("max_tokens", call)
+
+    def test_request_chat_completion_omits_max_tokens_when_non_positive(self) -> None:
+        endpoint = EndpointConfig(
+            name="local",
+            base_url="http://127.0.0.1:8000/v1",
+            model="test-model",
+            structured_mode="none",
+        )
+        req = ChatRequest(
+            request_id="r1",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+        client = _FakeClient([_fake_response("ok")])
+
+        result = asyncio.run(
+            request_chat_completion(
+                client=client,
+                endpoint=endpoint,
+                api_settings=APISettings(max_retries=0),
+                request=req,
+                sampling_cfg={"temperature": 0.0, "top_p": 1.0, "max_new_tokens": -1},
+                structured_output=False,
+                json_schema=None,
+            )
+        )
+
+        self.assertIsNone(result.error)
+        call = client.completions.calls[0]
+        self.assertNotIn("max_tokens", call)
 
 
 if __name__ == "__main__":

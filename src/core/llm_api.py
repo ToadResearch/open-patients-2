@@ -9,6 +9,7 @@ import contextlib
 import json
 import os
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -228,6 +229,11 @@ def _default_client_factory(endpoint: EndpointConfig, timeout_s: float):
         )
     api_key = os.environ.get(endpoint.api_key_env)
     if not api_key:
+        parsed = urllib.parse.urlparse(endpoint.base_url)
+        if (parsed.hostname or "").lower() in {"127.0.0.1", "localhost", "::1"}:
+            # Local OpenAI-compatible servers often do not validate API keys.
+            api_key = "dummy"
+    if not api_key:
         raise RuntimeError(
             f"Missing API key for endpoint '{endpoint.name}'. "
             f"Set environment variable {endpoint.api_key_env}."
@@ -397,8 +403,14 @@ async def request_chat_completion(
         "messages": request.messages,
         "temperature": sampling_cfg.get("temperature"),
         "top_p": sampling_cfg.get("top_p"),
-        "max_tokens": sampling_cfg.get("max_new_tokens"),
     }
+    max_new_tokens_raw = sampling_cfg.get("max_new_tokens")
+    try:
+        max_new_tokens = int(max_new_tokens_raw) if max_new_tokens_raw is not None else None
+    except (TypeError, ValueError):
+        max_new_tokens = None
+    if max_new_tokens is not None and max_new_tokens > 0:
+        request_kwargs["max_tokens"] = max_new_tokens
     seed = sampling_cfg.get("seed")
     if seed is not None:
         request_kwargs["seed"] = seed

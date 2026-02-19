@@ -43,13 +43,13 @@ uv run op-usmle-map
 4. (Optional) Start local vLLM server(s) from config:
 
 ```bash
-uv run op-vllm-serve --config configs/runs/medgemma-27b-text-it-unsloth.yaml
+uv run op-vllm-serve --config configs/runs/qwen3-4b-thinking-2507-fp8-vllm.yaml
 ```
 
 5. Run enrichment:
 
 ```bash
-uv run op-worker --config configs/runs/medgemma-27b-text-it-unsloth.yaml
+uv run op-worker --config configs/runs/qwen3-4b-thinking-2507-fp8-vllm.yaml
 ```
 
 6. (Optional) Launch replica-sharded client workers from the main worker command:

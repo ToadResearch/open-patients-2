@@ -17,7 +17,7 @@ Outputs are written as sharded JSONL under `out_dir/shards/` and (by default) a 
 - `src/cli/launch.py`: replica launcher for process-sharded worker runs (used by `op-worker --replicas` and the compatibility `op-replicas` wrapper).
 - `src/cli/bench.py`: throughput benchmark (single process).
 - `src/cli/bench_replicas.py`: replica benchmark launcher + aggregate metrics (used by `op-bench --replicas` and the compatibility `op-bench-replicas` wrapper).
-- `src/cli/serve_vllm.py`: managed launcher for one or more `vllm serve` API servers from config.
+- `src/cli/serve_vllm.py`: managed launcher for one or more `vllm serve` API servers from config; injects `--api-key dummy` by default unless overridden in `serve.api_key`, and performs `/v1/models` health checks (with auth header when api key is set).
 - `src/cli/check_prompt.py`: renders prompt for sample note/tokenizer(s).
 - `src/cli/usmle_map.py`: idempotent wrapper for generating `configs/usmle_mapping.json`.
 - `src/cli/push_to_hf.py`: uploads output dataset to Hugging Face.
@@ -47,6 +47,20 @@ Outputs are written as sharded JSONL under `out_dir/shards/` and (by default) a 
 ## Important Contracts
 - Schema is the source of truth for output keys (`load_schema`).
 - `ensure_schema` drops unknown keys, fills missing scalars with `null`, and enforces list fields as lists.
+- Token budget behavior (`max_new_tokens`):
+  - positive integer: sent as `max_tokens` to the OpenAI-compatible endpoint
+  - omitted / `null` / `0` / `-1`: worker omits `max_tokens` in the request
+  - for vLLM, omitted `max_tokens` lets the server choose completion budget from remaining context (effectively `max_model_len - prompt_length`, subject to server/platform caps)
+  - do not set `max_new_tokens` equal to `max_model_len`; prompt tokens must also fit in context
+- Local API key behavior:
+  - worker/bench client (`src/core/llm_api.py`) uses `OPENAI_API_KEY` (or endpoint `api_key_env`) when present
+  - if API key env var is missing and endpoint host is local (`127.0.0.1` / `localhost` / `::1`), client automatically uses `dummy`
+  - remote endpoints still require real key env vars
+- Managed vLLM serving behavior:
+  - `op-vllm-serve` defaults to passing `--api-key dummy` to `vllm serve`
+  - set `serve.api_key` explicitly in endpoint config to override, or `null` to skip passing `--api-key`
+  - health checks target `<base_url>/models` (for OpenAI-compatible `/v1/models`) and include `Authorization: Bearer <api_key>` when api key is configured
+  - on health timeout, launcher terminates child server process(es) and exits non-zero
 - Every written row includes a `reasoning` field:
   - populated from provider message fields when present (`reasoning`, `reasoning_content`, `reasoning_details`)
   - merged with `<think>...</think>` / `<reasoning>...</reasoning>` text blocks when present
@@ -68,6 +82,8 @@ Outputs are written as sharded JSONL under `out_dir/shards/` and (by default) a 
   - `uv run op-usmle-map`
 - Start vLLM API server(s) from config:
   - `uv run op-vllm-serve --config configs/runs/medgemma-27b-text-it-unsloth.yaml`
+  - `uv run op-vllm-serve --config configs/runs/qwen3-4b-thinking-2507-fp8-vllm.yaml --health_timeout_s 600`
+  - `uv run op-vllm-serve --config configs/runs/qwen3-4b-thinking-2507-fp8-vllm.yaml --no_wait_for_health` (debug only)
 - Run worker:
   - `uv run op-worker --config configs/runs/medgemma-27b-text-it-unsloth.yaml`
   - `uv run op-worker --config configs/runs/openrouter-trinity-mini.yaml`
@@ -81,6 +97,7 @@ Outputs are written as sharded JSONL under `out_dir/shards/` and (by default) a 
   - `uv run op-bench --config configs/runs/medgemma-27b-text-it-unsloth.yaml`
   - `uv run op-bench --config configs/runs/medgemma-27b-text-it-unsloth.yaml --replicas 8`
   - compatibility wrapper: `uv run op-bench-replicas --config configs/runs/medgemma-27b-text-it-unsloth.yaml --replicas 8`
+  - Qwen local throughput example: `uv run op-bench --config configs/runs/qwen3-4b-thinking-2507-fp8-vllm.yaml --max_notes 50 --max_new_tokens 2048 --queue_size 128`
 - Sweep (single GPU):
   - `.venv/bin/python scripts/sweep_single_h100.py --config configs/runs/medgemma-1.5-4b-it-unsloth.yaml --max_notes 256 --stage2_max_notes 256 --batch_sizes 16,32,64,96,128,256`
   - `.venv/bin/python scripts/sweep_single_h100.py --config configs/runs/medgemma-27b-text-it-unsloth.yaml --max_notes 256 --stage2_max_notes 256 --max_new_tokens 256 --stage1_batch_size 128 --stage1_max_num_seqs 128,256 --stage1_max_num_batched_tokens 8192,16384,32768 --stage1_chunked_prefill 1 --batch_sizes 32,64,96,128,256`
@@ -131,3 +148,5 @@ Outputs are written as sharded JSONL under `out_dir/shards/` and (by default) a 
 
 ## Notes For Future Agents
 See `notes/agent-onboarding.md` and `notes/change-checklist.md`.
+Local benchmark snapshot (Qwen3-4B-Thinking-2507-FP8, 2026-02-19):
+- `notes/benchmarks/qwen3-4b-thinking-2507-fp8-benchmark-report-2026-02-19.md`

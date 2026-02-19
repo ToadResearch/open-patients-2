@@ -153,7 +153,7 @@ parallel:
                 "args": ["--served-model-name", "foo-model"],
             },
         )
-        cmd, env = serve_vllm._build_vllm_cmd(endpoint)
+        cmd, env, health_headers = serve_vllm._build_vllm_cmd(endpoint)
 
         self.assertEqual(cmd[:3], ["vllm", "serve", "foo/model"])
         self.assertIn("--host", cmd)
@@ -161,7 +161,10 @@ parallel:
         self.assertIn("--tensor-parallel-size", cmd)
         self.assertIn("--enable-chunked-prefill", cmd)
         self.assertIn("--max-model-len", cmd)
+        self.assertIn("--api-key", cmd)
+        self.assertIn("dummy", cmd)
         self.assertEqual(env.get("CUDA_VISIBLE_DEVICES"), "2,3")
+        self.assertEqual(health_headers.get("Authorization"), "Bearer dummy")
 
 
 if __name__ == "__main__":

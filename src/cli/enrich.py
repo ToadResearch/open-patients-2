@@ -14,6 +14,7 @@ import shutil
 import sys
 import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -59,7 +60,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "replicas": 1,
         "queue_size": 0,
         "max_notes": 0,
-        "max_new_tokens": 700,
+        "max_new_tokens": None,
         "temperature": 0.0,
         "top_p": 1.0,
         "seed": 0,
@@ -455,6 +456,7 @@ def main() -> None:
             "No API endpoints configured. Set api.endpoints in --config or provide "
             "--api_endpoints / --api_base_url + --model."
         )
+    endpoint_by_name = {ep.name: ep for ep in endpoints}
 
     print("Endpoints:")
     for ep in endpoints:
@@ -628,6 +630,79 @@ def main() -> None:
             )
             return
 
+        async def _repair_json_with_thinking_disabled() -> Optional[dict]:
+            """
+            Retry once with thinking disabled to recover strict JSON while
+            preserving first-pass reasoning text.
+            """
+            endpoint = endpoint_by_name.get(result.endpoint_name)
+            if endpoint is None:
+                return None
+
+            repair_extra_body = dict(endpoint.extra_body or {})
+            chat_kwargs = repair_extra_body.get("chat_template_kwargs")
+            if not isinstance(chat_kwargs, dict):
+                chat_kwargs = {}
+            else:
+                chat_kwargs = dict(chat_kwargs)
+            chat_kwargs["enable_thinking"] = False
+            repair_extra_body["chat_template_kwargs"] = chat_kwargs
+            repair_endpoint = replace(endpoint, extra_body=repair_extra_body)
+
+            repair_sampling_cfg = dict(sampling_cfg)
+            try:
+                repair_max_new_tokens = int(repair_sampling_cfg.get("max_new_tokens") or 0)
+            except (TypeError, ValueError):
+                repair_max_new_tokens = 0
+            if repair_max_new_tokens <= 0:
+                repair_max_new_tokens = 4096
+            repair_sampling_cfg["max_new_tokens"] = min(repair_max_new_tokens, 4096)
+
+            repair_user = USER_TEMPLATE.format(note=row.get("description", ""), keys=keys_str)
+            repair_messages = build_messages(args.prompt_mode, system_prompt, repair_user)
+            repair_req = ChatRequest(
+                request_id=f"{_id}::repair",
+                messages=repair_messages,
+                metadata={"row": row},
+            )
+
+            repair_results, _ = await run_chat_requests(
+                requests=[repair_req],
+                endpoints=[repair_endpoint],
+                api_settings=api_settings,
+                sampling_cfg=repair_sampling_cfg,
+                structured_output=use_structured_output,
+                json_schema=json_schema,
+                on_result=None,
+                queue_size=1,
+            )
+            if not repair_results:
+                return None
+
+            repair_result = repair_results[0]
+            if repair_result.error:
+                return None
+
+            repair_usage = repair_result.usage or {}
+            input_tokens_inc = int(repair_usage.get("prompt_tokens", 0) or 0)
+            output_tokens_inc = int(repair_usage.get("completion_tokens", 0) or 0)
+            input_tokens_local = input_tokens_inc
+            output_tokens_local = output_tokens_inc
+            nonlocal input_tokens, output_tokens
+            input_tokens += input_tokens_local
+            output_tokens += output_tokens_local
+
+            repair_raw = repair_result.text or ""
+            _, repair_final = split_reasoning_and_final(repair_raw)
+            if use_structured_output:
+                try:
+                    parsed_repair = json.loads(repair_final)
+                except Exception:
+                    parsed_repair = safe_json_extract(repair_final) or safe_json_extract(repair_raw)
+            else:
+                parsed_repair = safe_json_extract(repair_final) or safe_json_extract(repair_raw)
+            return parsed_repair if isinstance(parsed_repair, dict) else None
+
         parsed: Optional[dict]
         if use_structured_output:
             try:
@@ -636,6 +711,11 @@ def main() -> None:
                 parsed = safe_json_extract(final_text) or safe_json_extract(raw_text)
         else:
             parsed = safe_json_extract(final_text) or safe_json_extract(raw_text)
+
+        if parsed is None or not isinstance(parsed, dict):
+            if not reasoning and raw_text.strip():
+                reasoning = raw_text.strip()
+            parsed = await _repair_json_with_thinking_disabled()
 
         if parsed is None or not isinstance(parsed, dict):
             n_failed += 1

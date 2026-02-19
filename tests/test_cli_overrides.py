@@ -133,6 +133,10 @@ api:
             args = enrich_cli.parse_args(["--config", str(cfg_path)])
             self.assertEqual(args.max_notes, 0)
 
+    def test_enrich_max_new_tokens_default_is_auto(self) -> None:
+        args = enrich_cli.parse_args([])
+        self.assertIsNone(args.max_new_tokens)
+
 
 if __name__ == "__main__":
     unittest.main()
